@@ -66,9 +66,7 @@ def match_people(source_names, canonical_names):
         if key in choices: 
             continue
 
-        best=process.extractOne(key,keys,scorer=fuzz.ratio) 
-
-        if keys else None
+        best=process.extractOne(key,keys,scorer=fuzz.ratio) if keys else None
 
         if best and best[1]>=70: 
             out.append({'source':src,'candidate':choices[best[0]],'score':round(best[1],1)})

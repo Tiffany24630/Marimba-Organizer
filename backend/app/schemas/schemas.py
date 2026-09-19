@@ -5,7 +5,8 @@ class ProjectIn(BaseModel):
     name:str
     description:str|None=None
 
-class CompositionIn(BaseModel): project_id:int
+class CompositionIn(BaseModel):
+    project_id:int
     song_id:int|None=None
     name:str
     width:int=1600

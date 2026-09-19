@@ -72,7 +72,7 @@ class Composition(Base):
     name:Mapped[str]=mapped_column(String(200))
     width:Mapped[int]=mapped_column(Integer,default=1600)
     height:Mapped[int]=mapped_column(Integer,default=900)
-    ata:Mapped[dict]=mapped_column(JSON,default=dict)
+    data:Mapped[dict]=mapped_column(JSON,default=dict)
     created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now)
     updated_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=now,onupdate=now)
 
