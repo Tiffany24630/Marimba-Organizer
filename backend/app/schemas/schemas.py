@@ -18,8 +18,19 @@ class MarimbaTemplateIn(BaseModel):
     description:str|None=None
     positions:list[str]
 
+class SongIn(BaseModel):
+    name:str
+
+class SongPatch(BaseModel):
+    name:str
+
+class CompositionDuplicateIn(BaseModel):
+    name:str|None=None
+    song_id:int|None=None
+
 class ImportConfirm(BaseModel): 
-    project_name:str
+    project_name:str=''
+    project_id:int|None=None
     description:str|None=None
     source_filename:str|None=None
     sheets:list[dict[str,Any]]
