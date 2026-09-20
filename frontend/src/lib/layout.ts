@@ -37,10 +37,22 @@ export function nearestSlot(m:MarimbaElement,local:{x:number,y:number}):number{
  return best;
 }
 
-export function elementBBox(e:Element){
- const w=e.width*(e.scaleX||1),h=e.height*(e.scaleY||1);
- const r=(e.rotation||0)*Math.PI/180,c=Math.cos(r),s=Math.sin(r);
- const pts=[[0,0],[w,0],[w,h],[0,h]].map(([X,Y])=>({x:e.x+X*c-Y*s,y:e.y+X*s+Y*c}));
+export function elementBBox(e:Element, marimba?:MarimbaElement){
+ let w=e.width*(e.scaleX||1), h=e.height*(e.scaleY||1);
+ let ox=0, oy=0, rot=e.rotation||0;
+ if(e.type==='person'&&e.marimbaId&&marimba){
+  const idx=marimba.positions.findIndex(p=>p.id===e.marimbaPositionId);
+  if(idx>=0){
+   const r=slotRect(marimba,idx);
+   w=r.width-6;
+   h=r.height-6;
+   ox=w/2;
+   oy=h/2;
+   rot=marimba.rotation;
+  }
+ }
+ const rad=rot*Math.PI/180, c=Math.cos(rad), s=Math.sin(rad);
+ const pts=[[-ox,-oy],[w-ox,-oy],[w-ox,h-oy],[-ox,h-oy]].map(([X,Y])=>({x:e.x+X*c-Y*s,y:e.y+X*s+Y*c}));
  const minX=Math.min(...pts.map(p=>p.x)),maxX=Math.max(...pts.map(p=>p.x));
  const minY=Math.min(...pts.map(p=>p.y)),maxY=Math.max(...pts.map(p=>p.y));
  return {x:minX,y:minY,width:maxX-minX,height:maxY-minY};

@@ -9,6 +9,7 @@ export type MarimbaElement={
  id:string;type:'marimba';name:string;
  x:number;y:number;width:number;height:number;
  rotation:number;scaleX:number;scaleY:number;
+ locked?:boolean;
  positions:MarimbaPosition[];
 };
 
@@ -16,8 +17,21 @@ export type PersonElement={
  id:string;type:'person';name:string;personId:number;positionType:string;
  x:number;y:number;width:number;height:number;
  rotation:number;scaleX:number;scaleY:number;
+ locked?:boolean;
  marimbaId:string|null;marimbaPositionId:string|null;
 };
 
 export type Element=MarimbaElement|PersonElement;
 export type CompositionData={elements:Element[]};
+
+export type Composition={
+ id:number;
+ project_id:number;
+ song_id:number|null;
+ name:string;
+ width:number;
+ height:number;
+ data:CompositionData;
+ created_at?:string;
+ updated_at?:string;
+};

@@ -7,6 +7,8 @@ export const api={
  confirm:(payload:any)=>req('/imports/confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),
  createComposition:(payload:any)=>req('/compositions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),
  updateComposition:(id:number,payload:any)=>req(`/compositions/${id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),
+ renameComposition:(id:number,name:string)=>req(`/compositions/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})}),
+ deleteComposition:(id:number)=>req(`/compositions/${id}`,{method:'DELETE'}),
  duplicateComposition:(id:number,payload:{name?:string;song_id?:number|null}={})=>req(`/compositions/${id}/duplicate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),
  songs:(projectId:number)=>req(`/projects/${projectId}/songs`),
  createSong:(projectId:number,name:string)=>req(`/projects/${projectId}/songs`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})}),

@@ -15,6 +15,7 @@ export function normalizeElement(raw:any):Element|null{
   width:num(raw.width,isMarimba?MARIMBA_DEFAULT.width:PERSON_W),
   height:num(raw.height,isMarimba?MARIMBA_DEFAULT.height:PERSON_H),
   rotation:num(raw.rotation,0),scaleX:num(raw.scaleX,1),scaleY:num(raw.scaleY,1),
+  locked:Boolean(raw.locked??false),
  };
  if(isMarimba){
   const positions=(Array.isArray(raw.positions)?raw.positions:[]).map((p:any)=>{
@@ -70,13 +71,26 @@ function applyAssign(els:Element[],personElId:string,marimbaId:string,positionId
  return out;
 }
 
+function cloneEls(els:Element[]):Element[]{
+ return JSON.parse(JSON.stringify(els));
+}
+
 type Geometry={x:number;y:number;rotation:number;scaleX:number;scaleY:number};
 
 type State={
  elements:Element[];
  selectedId:string|null;
+ history:Element[][];
+ future:Element[][];
+ isDirty:boolean;
  setElements:(raw:unknown)=>void;
  select:(id:string|null)=>void;
+ markClean:()=>void;
+ markDirty:()=>void;
+ recordHistory:()=>void;
+ undo:()=>void;
+ redo:()=>void;
+ toggleLock:(id:string)=>void;
  addPerson:(p:{id:number,name:string,position?:string})=>void;
  addMarimba:(m:{name:string,positions:string[]})=>void;
  addCustomMarimba:(name?:string)=>void;
@@ -97,45 +111,147 @@ type State={
 export const useComposition=create<State>((set)=>({
  elements:[],
  selectedId:null,
- setElements:raw=>set({elements:(Array.isArray(raw)?raw:[]).map(normalizeElement).filter((e):e is Element=>!!e),selectedId:null}),
+ history:[],
+ future:[],
+ isDirty:false,
+ setElements:raw=>set({
+  elements:(Array.isArray(raw)?raw:[]).map(normalizeElement).filter((e):e is Element=>!!e),
+  selectedId:null,
+  history:[],
+  future:[],
+  isDirty:false,
+ }),
  select:id=>set({selectedId:id}),
+ markClean:()=>set({isDirty:false}),
+ markDirty:()=>set({isDirty:true}),
+ recordHistory:()=>set(s=>({
+  history:[...s.history.slice(-29),cloneEls(s.elements)],
+  future:[],
+  isDirty:true,
+ })),
+ undo:()=>set(s=>{
+  if(!s.history.length)return {};
+  const prev=s.history[s.history.length-1];
+  const newHistory=s.history.slice(0,-1);
+  return {
+   elements:prev,
+   history:newHistory,
+   future:[cloneEls(s.elements),...s.future.slice(0,29)],
+   selectedId:null,
+   isDirty:true,
+  };
+ }),
+ redo:()=>set(s=>{
+  if(!s.future.length)return {};
+  const next=s.future[0];
+  const newFuture=s.future.slice(1);
+  return {
+   elements:next,
+   history:[...s.history.slice(-29),cloneEls(s.elements)],
+   future:newFuture,
+   selectedId:null,
+   isDirty:true,
+  };
+ }),
+ toggleLock:id=>set(s=>{
+  const el=s.elements.find(e=>e.id===id);
+  if(!el)return {};
+  const newLocked=!el.locked;
+  return {
+   history:[...s.history.slice(-29),cloneEls(s.elements)],
+   future:[],
+   elements:s.elements.map(e=>e.id===id?{...e,locked:newLocked} as Element:e),
+   isDirty:true,
+  };
+ }),
  addPerson:p=>set(s=>{
   const existing=s.elements.find(e=>e.type==='person'&&e.personId===p.id);
   if(existing)return {selectedId:existing.id};
   const el:PersonElement={id:uid(),type:'person',name:p.name,personId:p.id,positionType:p.position||'Primera',
    x:80+Math.random()*220,y:70+Math.random()*160,width:PERSON_W,height:PERSON_H,
-   rotation:0,scaleX:1,scaleY:1,marimbaId:null,marimbaPositionId:null};
-  return {elements:[...s.elements,el],selectedId:el.id};
+   rotation:0,scaleX:1,scaleY:1,locked:false,marimbaId:null,marimbaPositionId:null};
+  return {
+   history:[...s.history.slice(-29),cloneEls(s.elements)],
+   future:[],
+   elements:[...s.elements,el],
+   selectedId:el.id,
+   isDirty:true,
+  };
  }),
  addMarimba:m=>set(s=>{
   const n=Math.max(m.positions.length,1);
   const width=Math.max(MARIMBA_DEFAULT.width,2*MARIMBA_DEFAULT.pad+n*MARIMBA_DEFAULT.minSlotW+(n-1)*MARIMBA_DEFAULT.gap);
   const el:MarimbaElement={id:uid(),type:'marimba',name:m.name,x:260+Math.random()*160,y:200+Math.random()*120,
-   width,height:MARIMBA_DEFAULT.height,rotation:0,scaleX:1,scaleY:1,
+   width,height:MARIMBA_DEFAULT.height,rotation:0,scaleX:1,scaleY:1,locked:false,
    positions:m.positions.map(t=>({id:uid(),type:t,personId:null}))};
-  return {elements:[...s.elements,el],selectedId:el.id};
+  return {
+   history:[...s.history.slice(-29),cloneEls(s.elements)],
+   future:[],
+   elements:[...s.elements,el],
+   selectedId:el.id,
+   isDirty:true,
+  };
  }),
  addCustomMarimba:name=>set(s=>{
   const el:MarimbaElement={id:uid(),type:'marimba',name:name||'Marimba personalizada',x:300+Math.random()*160,y:220+Math.random()*120,
-   width:MARIMBA_DEFAULT.width,height:MARIMBA_DEFAULT.height,rotation:0,scaleX:1,scaleY:1,
+   width:MARIMBA_DEFAULT.width,height:MARIMBA_DEFAULT.height,rotation:0,scaleX:1,scaleY:1,locked:false,
    positions:[{id:uid(),type:'Primera',personId:null}]};
-  return {elements:[...s.elements,el],selectedId:el.id};
+  return {
+   history:[...s.history.slice(-29),cloneEls(s.elements)],
+   future:[],
+   elements:[...s.elements,el],
+   selectedId:el.id,
+   isDirty:true,
+  };
  }),
- update:(id,patch)=>set(s=>({elements:s.elements.map(e=>e.id===id?{...e,...patch} as Element:e)})),
- remove:id=>set(s=>{
+ update:(id,patch)=>set(s=>{
   const el=s.elements.find(e=>e.id===id);
   if(!el)return {};
+  // If locked, disallow modifying geometry directly through update unless toggling locked
+  if(el.locked&&!('locked' in patch)&&('x' in patch||'y' in patch||'rotation' in patch||'scaleX' in patch)){
+   return {};
+  }
+  return {
+   history:[...s.history.slice(-29),cloneEls(s.elements)],
+   future:[],
+   elements:s.elements.map(e=>e.id===id?{...e,...patch} as Element:e),
+   isDirty:true,
+  };
+ }),
+ remove:id=>set(s=>{
+  const el=s.elements.find(e=>e.id===id);
+  if(!el||el.locked)return {};
   if(el.type==='person'){
    const elements=s.elements.filter(e=>e.id!==id).map(e=>e.type==='marimba'
     ?{...e,positions:e.positions.map(p=>p.personId===el.personId?{...p,personId:null}:p)}:e);
-   return {elements,selectedId:null};
+   return {
+    history:[...s.history.slice(-29),cloneEls(s.elements)],
+    future:[],
+    elements,
+    selectedId:null,
+    isDirty:true,
+   };
   }
   const elements=s.elements.filter(e=>e.id!==id).map(e=>e.type==='person'&&e.marimbaId===id
    ?{...e,marimbaId:null,marimbaPositionId:null}:e);
-  return {elements,selectedId:null};
+  return {
+   history:[...s.history.slice(-29),cloneEls(s.elements)],
+   future:[],
+   elements,
+   selectedId:null,
+   isDirty:true,
+  };
  }),
- clear:()=>set({elements:[],selectedId:null}),
+ clear:()=>set(s=>({
+  history:[...s.history.slice(-29),cloneEls(s.elements)],
+  future:[],
+  elements:[],
+  selectedId:null,
+  isDirty:true,
+ })),
  addPosition:(marimbaId,type)=>set(s=>{
+  const m=s.elements.find(e=>e.id===marimbaId);
+  if(!m||m.type!=='marimba'||m.locked)return {};
   const els=s.elements.map(e=>{
    if(e.type!=='marimba'||e.id!==marimbaId)return e;
    const positions=[...e.positions,{id:uid(),type:type.trim()||'Primera',personId:null}];
@@ -143,11 +259,16 @@ export const useComposition=create<State>((set)=>({
    const mm={...e,positions,width:Math.max(e.width,needed)};
    return withRepositioned(s.elements.map(x=>x.id===marimbaId?mm:x),mm).find(x=>x.id===marimbaId)??mm;
   });
-  return {elements:els};
+  return {
+   history:[...s.history.slice(-29),cloneEls(s.elements)],
+   future:[],
+   elements:els,
+   isDirty:true,
+  };
  }),
  removePosition:(marimbaId,positionId)=>set(s=>{
   const mOld=s.elements.find(e=>e.id===marimbaId);
-  if(!mOld||mOld.type!=='marimba')return {};
+  if(!mOld||mOld.type!=='marimba'||mOld.locked)return {};
   const idx=mOld.positions.findIndex(p=>p.id===positionId);
   const r=idx>=0?slotRect(mOld,idx):null;
   const c=idx>=0?slotCenter(mOld,idx):null;
@@ -159,34 +280,68 @@ export const useComposition=create<State>((set)=>({
     x:c&&r?c.x-r.width/2:e.x,y:c&&r?c.y-r.height/2:e.y};
    return e;
   });
-  return {elements:withRepositioned(freed,stripped)};
+  return {
+   history:[...s.history.slice(-29),cloneEls(s.elements)],
+   future:[],
+   elements:withRepositioned(freed,stripped),
+   isDirty:true,
+  };
  }),
- setPositionType:(marimbaId,positionId,type)=>set(s=>({elements:s.elements.map(e=>e.type==='marimba'&&e.id===marimbaId
-  ?{...e,positions:e.positions.map(p=>p.id===positionId?{...p,type:type.trim()||p.type}:p)}:e)})),
+ setPositionType:(marimbaId,positionId,type)=>set(s=>{
+  const m=s.elements.find(e=>e.id===marimbaId);
+  if(!m||m.type!=='marimba'||m.locked)return {};
+  return {
+   history:[...s.history.slice(-29),cloneEls(s.elements)],
+   future:[],
+   elements:s.elements.map(e=>e.type==='marimba'&&e.id===marimbaId
+    ?{...e,positions:e.positions.map(p=>p.id===positionId?{...p,type:type.trim()||p.type}:p)}:e),
+   isDirty:true,
+  };
+ }),
  movePosition:(marimbaId,positionId,dir)=>set(s=>{
   const m=s.elements.find(e=>e.id===marimbaId);
-  if(!m||m.type!=='marimba')return {};
+  if(!m||m.type!=='marimba'||m.locked)return {};
   const i=m.positions.findIndex(p=>p.id===positionId);
   const j=i+dir;
   if(i<0||j<0||j>=m.positions.length)return {};
   const positions=[...m.positions];
   [positions[i],positions[j]]=[positions[j],positions[i]];
   const mm={...m,positions};
-  return {elements:withRepositioned(s.elements.map(e=>e.id===marimbaId?mm:e),mm)};
+  return {
+   history:[...s.history.slice(-29),cloneEls(s.elements)],
+   future:[],
+   elements:withRepositioned(s.elements.map(e=>e.id===marimbaId?mm:e),mm),
+   isDirty:true,
+  };
  }),
- assign:(personElId,marimbaId,positionId)=>set(s=>({elements:applyAssign(s.elements,personElId,marimbaId,positionId)})),
+ assign:(personElId,marimbaId,positionId)=>set(s=>{
+  const pe=s.elements.find(e=>e.id===personElId);
+  const m=s.elements.find(e=>e.id===marimbaId);
+  if(pe?.locked||m?.locked)return {};
+  return {
+   history:[...s.history.slice(-29),cloneEls(s.elements)],
+   future:[],
+   elements:applyAssign(s.elements,personElId,marimbaId,positionId),
+   isDirty:true,
+  };
+ }),
  unassign:(personElId,at)=>set(s=>{
   const pe=s.elements.find(e=>e.id===personElId);
-  if(!pe||pe.type!=='person')return {};
-  return {elements:s.elements.map(el=>{
-   if(el.id===personElId)return {...el,marimbaId:null,marimbaPositionId:null,rotation:0,...(at?{x:at.x,y:at.y}:{})};
-   if(el.type==='marimba')return {...el,positions:el.positions.map(p=>p.personId===pe.personId?{...p,personId:null}:p)};
-   return el;
-  })};
+  if(!pe||pe.type!=='person'||pe.locked)return {};
+  return {
+   history:[...s.history.slice(-29),cloneEls(s.elements)],
+   future:[],
+   elements:s.elements.map(el=>{
+    if(el.id===personElId)return {...el,marimbaId:null,marimbaPositionId:null,rotation:0,...(at?{x:at.x,y:at.y}:{})};
+    if(el.type==='marimba')return {...el,positions:el.positions.map(p=>p.personId===pe.personId?{...p,personId:null}:p)};
+    return el;
+   }),
+   isDirty:true,
+  };
  }),
  dropPerson:(personElId,pointer,fallback)=>set(s=>{
   const pe=s.elements.find(e=>e.id===personElId);
-  if(!pe||pe.type!=='person')return {};
+  if(!pe||pe.type!=='person'||pe.locked)return {};
   if(pointer){
    const marimbas=s.elements.filter((e):e is MarimbaElement=>e.type==='marimba');
    for(let i=marimbas.length-1;i>=0;i--){
@@ -197,31 +352,47 @@ export const useComposition=create<State>((set)=>({
     const posId=m.positions[nearestSlot(m,l)]?.id;
     if(!posId)break;
     if(pe.marimbaId===m.id&&pe.marimbaPositionId===posId)return {};
-    return {elements:applyAssign(s.elements,personElId,m.id,posId)};
+    if(m.locked)return {};
+    return {
+     history:[...s.history.slice(-29),cloneEls(s.elements)],
+     future:[],
+     elements:applyAssign(s.elements,personElId,m.id,posId),
+     isDirty:true,
+    };
    }
   }
-  return {elements:s.elements.map(el=>{
-   if(el.id===personElId)return {...el,marimbaId:null,marimbaPositionId:null,rotation:fallback.rotation,x:fallback.x,y:fallback.y};
-   if(el.type==='marimba')return {...el,positions:el.positions.map(p=>p.personId===pe.personId?{...p,personId:null}:p)};
-   return el;
-  })};
+  return {
+   history:[...s.history.slice(-29),cloneEls(s.elements)],
+   future:[],
+   elements:s.elements.map(el=>{
+    if(el.id===personElId)return {...el,marimbaId:null,marimbaPositionId:null,rotation:fallback.rotation,x:fallback.x,y:fallback.y};
+    if(el.type==='marimba')return {...el,positions:el.positions.map(p=>p.personId===pe.personId?{...p,personId:null}:p)};
+    return el;
+   }),
+   isDirty:true,
+  };
  }),
  marimbaDragged:(id,x,y)=>set(s=>{
   const m=s.elements.find(e=>e.id===id);
-  if(!m||m.type!=='marimba')return {};
+  if(!m||m.type!=='marimba'||m.locked)return {};
   const dx=x-m.x,dy=y-m.y;
   if(dx===0&&dy===0)return {};
-  return {elements:s.elements.map(e=>{
-   if(e.id===id&&e.type==='marimba')return {...e,x,y};
-   if(e.type==='person'&&e.marimbaId===id)return {...e,x:e.x+dx,y:e.y+dy};
-   return e;
-  })};
+  return {
+   elements:s.elements.map(e=>{
+    if(e.id===id&&e.type==='marimba')return {...e,x,y};
+    if(e.type==='person'&&e.marimbaId===id)return {...e,x:e.x+dx,y:e.y+dy};
+    return e;
+   }),
+   isDirty:true,
+  };
  }),
  marimbaTransformed:(id,g)=>set(s=>{
+  const mOld=s.elements.find(e=>e.id===id);
+  if(!mOld||mOld.type!=='marimba'||mOld.locked)return {};
   const els=s.elements.map(e=>e.id===id&&e.type==='marimba'?{...e,...g}:e);
   const m=els.find(e=>e.id===id);
   if(!m||m.type!=='marimba')return {elements:els};
-  return {elements:withRepositioned(els,m)};
+  return {elements:withRepositioned(els,m),isDirty:true};
  }),
 }));
 
