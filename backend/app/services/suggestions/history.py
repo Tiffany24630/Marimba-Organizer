@@ -2,13 +2,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.models import Song, Person, Composition
 
-
 def parse_composition_marimba_info(data):
     """Parse composition.data -> {person_id: {marimba_name, position_type, physical_index}}"""
     if not data or not isinstance(data, dict):
         return {}
 
     elements = data.get('elements', [])
+
     if not isinstance(elements, list):
         return {}
 
@@ -20,6 +20,7 @@ def parse_composition_marimba_info(data):
             mid = e.get('id', '')
             marimba_names[mid] = e.get('name', '')
             positions = e.get('positions', [])
+
             if isinstance(positions, list):
                 for idx, p in enumerate(positions):
                     if isinstance(p, dict):
@@ -41,7 +42,6 @@ def parse_composition_marimba_info(data):
 
     return person_marimba
 
-
 def get_person_history(project_id, db, exclude_song_id=None):
     """
     Derivar historial de cada persona desde las canciones y composiciones del proyecto.
@@ -54,12 +54,14 @@ def get_person_history(project_id, db, exclude_song_id=None):
         songs = [s for s in songs if s.id != exclude_song_id]
 
     song_ids = [s.id for s in songs]
+
     if song_ids:
         comps = db.scalars(select(Composition).where(
             Composition.song_id.in_(song_ids)
         )).all()
     else:
         comps = []
+
     song_to_comp_data = {c.song_id: c.data for c in comps if c.song_id is not None and c.data}
 
     history = {}
@@ -70,6 +72,7 @@ def get_person_history(project_id, db, exclude_song_id=None):
 
         for assignment in song.assignments:
             pid = assignment.person_id
+
             if pid not in history:
                 person = db.get(Person, pid)
                 history[pid] = {
@@ -92,6 +95,7 @@ def get_person_history(project_id, db, exclude_song_id=None):
             if pos_name not in h['position_frequency']:
                 h['position_frequency'][pos_name] = 0
                 h['positions'].append(pos_name)
+
             h['position_frequency'][pos_name] += 1
 
             info = marimba_info.get(pid, {})
@@ -103,6 +107,7 @@ def get_person_history(project_id, db, exclude_song_id=None):
                 if marimba_name not in h['marimba_frequency']:
                     h['marimba_frequency'][marimba_name] = 0
                     h['marimbas'].append(marimba_name)
+
                 h['marimba_frequency'][marimba_name] += 1
 
             h['assignments'].append({

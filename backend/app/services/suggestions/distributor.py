@@ -4,14 +4,12 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from app.models import Song, Person, Composition
 
-
 MARIMBA_W = 380
 MARIMBA_H = 150
 PAD = 14
 GAP = 10
 SLOT_Y = 56
 SLOT_H = 54
-
 
 def generate_proposals(assignments, history):
     """
@@ -42,6 +40,7 @@ def generate_proposals(assignments, history):
             reasons.append('Continuidad de posición')
 
         marimba_name = last_marimba or 'Marimba 1'
+
         if last_marimba:
             reasons.append(f'Continuidad de marimba ({last_marimba})')
         else:
@@ -71,11 +70,13 @@ def generate_proposals(assignments, history):
          'last_position': h.get('last_position'),
          'last_marimba': h.get('last_marimba'),
          'last_song_name': h.get('last_song_name')}
+
         for h in history if h['person_id'] in used_person_ids
     ]
 
     people_without_history = [
         {'person_id': pid, 'name': a['person_name']}
+
         for a in assignments if pid not in history_by_person
     ]
 
@@ -85,14 +86,15 @@ def generate_proposals(assignments, history):
         'people_without_history': people_without_history,
     }
 
-
 def _assign_physical_positions(proposals):
     """
     Agrupar propuestas por marimba_name y asignar índices físicos secuenciales.
     """
     by_marimba = {}
+
     for p in proposals:
         mb = p['marimba_name']
+
         if mb not in by_marimba:
             by_marimba[mb] = []
         by_marimba[mb].append(p)
@@ -103,13 +105,13 @@ def _assign_physical_positions(proposals):
 
     return proposals
 
-
 def create_composition_from_proposals(song_id, proposals, name, db):
     """
     Crear una composición a partir de propuestas.
     Agrupa propuestas por marimba_name y construye los elementos.
     """
     song = db.get(Song, song_id)
+
     if not song:
         raise HTTPException(404, f'La canción {song_id} no existe.')
 
@@ -117,16 +119,21 @@ def create_composition_from_proposals(song_id, proposals, name, db):
 
     for p in proposals:
         pid = p.get('person_id')
+
         if pid is not None:
             person = db.get(Person, pid)
+
             if not person:
                 raise HTTPException(404, f'La persona {pid} no existe.')
 
     marimbas = {}
+
     for p in proposals:
         mb = p['marimba_name']
+
         if mb not in marimbas:
             marimbas[mb] = []
+
         marimbas[mb].append(p)
 
     elements = []
@@ -136,11 +143,11 @@ def create_composition_from_proposals(song_id, proposals, name, db):
         marimba_id = f'marimba_{uuid.uuid4().hex[:8]}'
         marimba_x = 200 + (marimba_idx % 2) * 450
         marimba_y = 200 + (marimba_idx // 2) * 250
-
         n = max(len(props_sorted), 1)
         slot_w = (MARIMBA_W - 2 * PAD - GAP * (n - 1)) / n
 
         positions = []
+
         for i, p in enumerate(props_sorted):
             pos_id = f'mp_{marimba_idx}_{i}'
             pid = p.get('person_id')
@@ -184,6 +191,7 @@ def create_composition_from_proposals(song_id, proposals, name, db):
         })
 
         comp_name = name or song.name
+
     def obj(c):
         return {col.name: getattr(c, col.name) for col in c.__table__.columns}
 
@@ -195,7 +203,9 @@ def create_composition_from_proposals(song_id, proposals, name, db):
         height=900,
         data={'elements': elements},
     )
+
     db.add(comp)
     db.commit()
     db.refresh(comp)
+
     return obj(comp)

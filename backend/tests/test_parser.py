@@ -1,12 +1,10 @@
 from pathlib import Path
 from io import BytesIO
 import zipfile
-
 from openpyxl import Workbook
 from app.services.excel_parser import parse_workbook, detect_duplicates
 
 EXAMPLES=Path(__file__).parents[2]/'examples'
-
 
 def xlsx_bytes(ws_build):
     wb=Workbook()
@@ -14,7 +12,6 @@ def xlsx_bytes(ws_build):
     buf=BytesIO()
     wb.save(buf)
     return buf.getvalue()
-
 
 def build_valid(wb):
     ws=wb.active
@@ -29,7 +26,6 @@ def build_valid(wb):
     ws['A4']='María López'
     ws['C4']='X'
 
-
 def test_real_workbook_is_parsed():
     p=EXAMPLES/'Puestos conciertos Marimba.xlsx'
     data=parse_workbook(p.read_bytes())
@@ -40,7 +36,6 @@ def test_real_workbook_is_parsed():
     assert data['marks']
     assert data['stats']['valid_rows']>0
 
-
 def test_valid_excel_detects_people_positions_and_rows():
     data=parse_workbook(xlsx_bytes(build_valid))
 
@@ -48,7 +43,6 @@ def test_valid_excel_detects_people_positions_and_rows():
     assert data['positions']==['Bajo','Primera']
     assert data['stats']['valid_rows']==2
     assert data['sheets'][0]['songs'][0]['assignments'][0]['person']=='Tiffany Salazar'
-
 
 def test_new_unknown_position_is_detected():
     def build(wb):
@@ -60,7 +54,6 @@ def test_new_unknown_position_is_detected():
     data=parse_workbook(xlsx_bytes(build))
 
     assert data['positions']==['Marimba Doble Agudo']
-
 
 def test_headers_with_spaces_and_accents_are_tolerated():
     def build(wb):
@@ -76,7 +69,6 @@ def test_headers_with_spaces_and_accents_are_tolerated():
     assert data['people']==['Ana García']
     assert data['positions']==['Segunda']
 
-
 def test_file_without_valid_rows_raises_value_error():
     def build(wb):
         ws=wb.active
@@ -87,7 +79,6 @@ def test_file_without_valid_rows_raises_value_error():
 
     assert data['people']==[] and data['positions']==[]
 
-
 def test_truncated_file_raises():
     p=EXAMPLES/'Puestos conciertos Marimba.xlsx'
     raw=p.read_bytes()
@@ -95,18 +86,15 @@ def test_truncated_file_raises():
     with __import__('pytest').raises(Exception):
         parse_workbook(raw[:200])
 
-
 def test_not_an_excel_raises():
     with __import__('pytest').raises(Exception):
         parse_workbook(b'esto no es un excel')
-
 
 def test_detect_duplicates_exact_and_similar():
     d=detect_duplicates(['Ana García','Ana García','Roberto Pérez','Roberto Peres'])
 
     assert any('Ana García' in g for g in d['exact'])
     assert any(set(x['names'])=={'Roberto Pérez','Roberto Peres'} for x in d['similar'])
-
 
 def test_real_example_is_valid_zip():
     p=EXAMPLES/'Puestos conciertos Marimba.xlsx'

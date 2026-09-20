@@ -33,10 +33,12 @@ def analyze_changes(proposals, history):
                 entry['is_change'] = True
                 entry['reason'] = f'Cambio de marimba: {p.get("name", "")} pasa de {last_marimba} a {proposed_marimba}'
                 entry['reason_code'] = 'marimba_change'
+
         elif last_marimba and not proposed_marimba:
             entry['is_change'] = False
             entry['reason'] = f'Sin marimba previa para {p.get("name", "")}'
             entry['reason_code'] = 'no_previous_marimba'
+
         else:
             entry['is_change'] = False
             entry['reason'] = f'Sin historial previo de marimba para {p.get("name", "")}'
@@ -52,7 +54,6 @@ def analyze_changes(proposals, history):
 
     return changes
 
-
 def summarize_continuity(history, assignments):
     """
     Resumir qué personas tienen continuidad (historial) y cuáles no.
@@ -66,6 +67,7 @@ def summarize_continuity(history, assignments):
     for a in assignments:
         pid = a['person_id']
         h = history_by_person.get(pid)
+
         if h:
             people_with_history.append({
                 'person_id': pid,
@@ -76,6 +78,7 @@ def summarize_continuity(history, assignments):
                 'position_frequency': h.get('position_frequency', {}),
                 'marimba_frequency': h.get('marimba_frequency', {}),
             })
+
         else:
             people_without_history.append({
                 'person_id': pid,

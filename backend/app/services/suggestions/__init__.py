@@ -5,7 +5,6 @@ from app.services.suggestions.requirements import get_song_requirements, get_son
 from app.services.suggestions.movement import analyze_changes
 from app.services.suggestions.distributor import generate_proposals, create_composition_from_proposals
 
-
 def suggest(data):
     """
     Función legacy para mantener compatibilidad con el endpoint POST /suggestions.
@@ -30,7 +29,6 @@ def suggest(data):
             })
 
     return {'movement': movement, 'groups': data.get('groups', [])}
-
 
 def get_suggestions_for_song(song_id, db):
     """

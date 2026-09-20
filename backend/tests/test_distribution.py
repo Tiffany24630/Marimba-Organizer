@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.db.session import SessionLocal
 from app.models import Project, Person, Position, Song, SongAssignment, Composition
+from app.services.suggestions.distribution import get_distribution_for_song
 
 def _slots(specs):
     return [{'marimba_name': m, 'slot_id': s, 'position_type': t,
@@ -99,19 +100,26 @@ def test_d12_composicion_anterior_intacta():
 
     try:
         proj = Project(name='Dist intacta')
+
         db.add(proj)
         db.commit()
         db.refresh(proj)
+
         car = Person(name='DI Carlos')
+
         db.add(car)
         db.commit()
         db.refresh(car)
+
         pp = db.query(Position).filter(Position.name == 'Primera').first() or Position(name='Primera')
+
         db.add(pp)
         db.commit()
         db.refresh(pp)
+
         s1 = Song(project_id=proj.id, name='S1', order_index=0)
         s2 = Song(project_id=proj.id, name='S2', order_index=1)
+
         db.add_all([s1, s2])
         db.commit()
         db.refresh(s1)
@@ -119,6 +127,7 @@ def test_d12_composicion_anterior_intacta():
         db.add_all([SongAssignment(song_id=s1.id, person_id=car.id, position_id=pp.id),
                     SongAssignment(song_id=s2.id, person_id=car.id, position_id=pp.id)])
         db.commit()
+
         data = {'elements': [
             {'id': 'mb1', 'type': 'marimba', 'name': 'Marimba A', 'x': 1, 'y': 1,
              'width': 10, 'height': 10, 'rotation': 0, 'scaleX': 1, 'scaleY': 1,
@@ -129,21 +138,21 @@ def test_d12_composicion_anterior_intacta():
              'rotation': 0, 'scaleX': 1, 'scaleY': 1}]}
         c1 = Composition(project_id=proj.id, song_id=s1.id, name='S1 dist',
                          width=1600, height=900, data=data)
+        
         db.add(c1)
         db.commit()
         db.refresh(c1)
+
         before = dict(db.get(Composition, c1.id).data)
-        from app.services.suggestions.distribution import get_distribution_for_song
+
         get_distribution_for_song(s2.id, db)
+
         assert db.get(Composition, c1.id).data == before
+
     finally:
         db.close()
 
 def test_d13_aplicacion_propuesta():
-    from fastapi.testclient import TestClient
-    from app.main import app
-    from app.db.session import SessionLocal
-    from app.models import Project, Person, Position, Song, SongAssignment, Composition
     client = TestClient(app)
     db = SessionLocal()
 

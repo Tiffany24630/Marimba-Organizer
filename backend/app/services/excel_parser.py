@@ -87,8 +87,10 @@ def match_people(source_names, canonical_names):
 
 def detect_duplicates(names):
     grouped={}
+    
     for x in names:
         grouped.setdefault(norm(x),[]).append(x)
+
     exact=[sorted(v) for v in grouped.values() if len(v)>1]
     fuzzy=[]
     seen=set()

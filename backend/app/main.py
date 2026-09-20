@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 import time
-
 from app.db.session import Base,engine
 from app.models import models
 from app.api.routes import router
@@ -16,10 +15,13 @@ def wait_for_db(retries:int=30,delay:float=2.0)->None:
         try:
             with engine.connect() as conn:
                 conn.execute(text('SELECT 1'))
+
             return
+
         except OperationalError:
             if attempt==retries:
                 raise
+            
             time.sleep(delay)
 
 wait_for_db()
