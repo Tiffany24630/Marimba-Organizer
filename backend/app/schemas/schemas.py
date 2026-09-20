@@ -28,16 +28,15 @@ class CompositionDuplicateIn(BaseModel):
     name:str|None=None
     song_id:int|None=None
 
+class CompositionPatch(BaseModel):
+    name:str|None=None
+    song_id:int|None=None
+
 class ApplySuggestions(BaseModel):
     proposals:list[dict]
     name:str|None=None
 
 class ImportConfirm(BaseModel):
-    project_name:str=''
-    project_id:int|None=None
-    description:str|None=None
-    source_filename:str|None=None
-    sheets:list[dict[str,Any]] 
     project_name:str=''
     project_id:int|None=None
     description:str|None=None

@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 from app.db.session import get_db
 from app.models import Project,Person,Position,Song,SongAssignment,MarimbaTemplate,Composition
-from app.schemas.schemas import ProjectIn,CompositionIn,MarimbaTemplateIn,ImportConfirm,SongIn,SongPatch,CompositionDuplicateIn,ApplySuggestions
+from app.schemas.schemas import ProjectIn,CompositionIn,CompositionPatch,MarimbaTemplateIn,ImportConfirm,SongIn,SongPatch,CompositionDuplicateIn,ApplySuggestions
 from app.services.excel_parser import parse_workbook,match_people,detect_duplicates
 from app.services.suggestions import suggest, get_suggestions_for_song
 from app.services.suggestions.distribution import get_distribution_for_song
@@ -141,7 +141,7 @@ def project(pid:int,db:Session=Depends(get_db)):
     for s in p.songs:
         songs.append({'id':s.id,'name':s.name,'assignments':[{'id':a.id,'person_id':a.person_id,'person':a.person.name,'position_id':a.position_id,'position':a.position.name,'mark':a.mark} for a in s.assignments]})
 
-    return {'project':obj(p),'songs':songs,'compositions':[{'id':c.id,'name':c.name,'song_id':c.song_id,'width':c.width,'height':c.height,'data':c.data} for c in p.compositions]}
+    return {'project':obj(p),'songs':songs,'compositions':[{'id':c.id,'name':c.name,'song_id':c.song_id,'width':c.width,'height':c.height,'data':c.data,'created_at':c.created_at,'updated_at':c.updated_at} for c in p.compositions]}
 
 @router.get('/people')
 def people(db:Session=Depends(get_db)): 
@@ -230,6 +230,42 @@ def update_composition(cid:int,p:CompositionIn,db:Session=Depends(get_db)):
 
     return obj(x)
 
+@router.patch('/compositions/{cid}')
+def rename_composition(cid:int,p:CompositionPatch,db:Session=Depends(get_db)):
+    x=db.get(Composition,cid)
+
+    if not x: 
+        raise HTTPException(404,'Composición no encontrada')
+
+    if p.song_id is not None:
+        _validate_song_for_project(db,x.project_id,p.song_id)
+        x.song_id=p.song_id
+
+    if p.name is not None:
+        name=p.name.strip()
+        if not name:
+            raise HTTPException(400,'El nombre de la composición no puede estar vacío.')
+        x.name=name
+
+    db.commit()
+    db.refresh(x)
+
+    return obj(x)
+
+@router.delete('/compositions/{cid}')
+def delete_composition(cid:int,db:Session=Depends(get_db)):
+    x=db.get(Composition,cid)
+
+    if not x: 
+        raise HTTPException(404,'Composición no encontrada')
+
+    pid=x.project_id
+    sid=x.song_id
+    db.delete(x)
+    db.commit()
+
+    return {'deleted':True,'id':cid,'project_id':pid,'song_id':sid}
+
 @router.get('/projects/{pid}/songs')
 def list_songs(pid:int,db:Session=Depends(get_db)):
     p=db.get(Project,pid)
@@ -286,7 +322,7 @@ def get_song(song_id:int,db:Session=Depends(get_db)):
 
     return {'id':s.id,'project_id':s.project_id,'name':s.name,'order_index':s.order_index,
         'assignments':[{'id':a.id,'person_id':a.person_id,'person':a.person.name,'position_id':a.position_id,'position':a.position.name,'mark':a.mark} for a in s.assignments],
-        'compositions':[{'id':c.id,'name':c.name,'song_id':c.song_id,'width':c.width,'height':c.height} for c in comps]}
+        'compositions':[{'id':c.id,'name':c.name,'song_id':c.song_id,'width':c.width,'height':c.height,'data':c.data,'created_at':c.created_at,'updated_at':c.updated_at} for c in comps]}
 
 @router.patch('/songs/{song_id}')
 def rename_song(song_id:int,p:SongPatch,db:Session=Depends(get_db)):
