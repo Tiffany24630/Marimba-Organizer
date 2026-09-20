@@ -4,9 +4,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 from app.db.session import get_db
 from app.models import Project,Person,Position,Song,SongAssignment,MarimbaTemplate,Composition
-from app.schemas.schemas import ProjectIn,CompositionIn,MarimbaTemplateIn,ImportConfirm,SongIn,SongPatch,CompositionDuplicateIn
+from app.schemas.schemas import ProjectIn,CompositionIn,MarimbaTemplateIn,ImportConfirm,SongIn,SongPatch,CompositionDuplicateIn,ApplySuggestions
 from app.services.excel_parser import parse_workbook,match_people,detect_duplicates
-from app.services.suggestions import suggest
+from app.services.suggestions import suggest, get_suggestions_for_song, create_composition_from_proposals
+from app.services.suggestions.history import get_person_history
+from app.services.suggestions.requirements import get_song_requirements
+
 
 router=APIRouter()
 
@@ -347,3 +350,23 @@ def duplicate_composition(cid:int,p:CompositionDuplicateIn,db:Session=Depends(ge
 @router.post('/suggestions')
 def suggestions(payload:dict): 
     return suggest(payload)
+
+@router.get('/songs/{song_id}/history')
+def song_history(song_id:int, db:Session=Depends(get_db)):
+    song=_get_song_or_404(song_id,db)
+    return get_person_history(song.project_id, db, exclude_song_id=song_id)
+
+@router.get('/songs/{song_id}/requirements')
+def song_requirements(song_id:int, db:Session=Depends(get_db)):
+    counts=get_song_requirements(song_id,db)
+    return {'position_counts':counts}
+
+@router.get('/songs/{song_id}/suggestions')
+def song_suggestions(song_id:int, db:Session=Depends(get_db)):
+    return get_suggestions_for_song(song_id, db)
+
+@router.post('/songs/{song_id}/suggestions/apply')
+def apply_suggestions(song_id:int, payload:ApplySuggestions, db:Session=Depends(get_db)):
+    song=_get_song_or_404(song_id,db)
+    comp=create_composition_from_proposals(song_id, payload.proposals, payload.name, db)
+    return comp
