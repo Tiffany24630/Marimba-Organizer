@@ -1,0 +1,47 @@
+import type {Element,MarimbaElement} from '../types';
+
+export const PERSON_W=150;
+export const PERSON_H=44;
+export const MARIMBA_DEFAULT={width:380,height:150,pad:14,gap:10,slotH:54,slotY:56,minSlotW:104};
+
+export function slotRect(m:MarimbaElement,i:number){
+ const n=Math.max(m.positions.length,1);
+ const w=(m.width-2*MARIMBA_DEFAULT.pad-MARIMBA_DEFAULT.gap*(n-1))/n;
+ return {x:MARIMBA_DEFAULT.pad+i*(w+MARIMBA_DEFAULT.gap),y:MARIMBA_DEFAULT.slotY,width:w,height:MARIMBA_DEFAULT.slotH};
+}
+
+export function localToWorld(m:MarimbaElement,lx:number,ly:number){
+ const r=m.rotation*Math.PI/180,c=Math.cos(r),s=Math.sin(r);
+ const X=lx*m.scaleX,Y=ly*m.scaleY;
+ return {x:m.x+X*c-Y*s,y:m.y+X*s+Y*c};
+}
+
+export function worldToLocal(m:MarimbaElement,wx:number,wy:number){
+ const r=-m.rotation*Math.PI/180,c=Math.cos(r),s=Math.sin(r);
+ const dx=wx-m.x,dy=wy-m.y;
+ return {x:(dx*c-dy*s)/m.scaleX,y:(dx*s+dy*c)/m.scaleY};
+}
+
+export function slotCenter(m:MarimbaElement,i:number){
+ const r=slotRect(m,i);
+ return localToWorld(m,r.x+r.width/2,r.y+r.height/2);
+}
+
+export function nearestSlot(m:MarimbaElement,local:{x:number,y:number}):number{
+ let best=-1,bestD=Infinity;
+ m.positions.forEach((_,i)=>{
+  const r=slotRect(m,i);
+  const d=Math.abs(local.x-(r.x+r.width/2));
+  if(d<bestD){bestD=d;best=i;}
+ });
+ return best;
+}
+
+export function elementBBox(e:Element){
+ const w=e.width*(e.scaleX||1),h=e.height*(e.scaleY||1);
+ const r=(e.rotation||0)*Math.PI/180,c=Math.cos(r),s=Math.sin(r);
+ const pts=[[0,0],[w,0],[w,h],[0,h]].map(([X,Y])=>({x:e.x+X*c-Y*s,y:e.y+X*s+Y*c}));
+ const minX=Math.min(...pts.map(p=>p.x)),maxX=Math.max(...pts.map(p=>p.x));
+ const minY=Math.min(...pts.map(p=>p.y)),maxY=Math.max(...pts.map(p=>p.y));
+ return {x:minX,y:minY,width:maxX-minX,height:maxY-minY};
+}
