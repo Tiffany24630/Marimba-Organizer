@@ -35,3 +35,26 @@ export type Composition={
  created_at?:string;
  updated_at?:string;
 };
+
+export type RequirementStatus='covered'|'partial'|'missing';
+
+export type PositionRequirement={
+ position_type:string;
+ required:number;
+ available:number;
+ missing:number;
+ status:RequirementStatus;
+};
+
+export type SongRequirements={
+ song_id:number;
+ song_name:string;
+ composition_id:number|null;
+ capacity_source:'composition'|'sin_composicion';
+ position_counts:Record<string,number>;
+ requirements:PositionRequirement[];
+ totals:{required:number;available:number;missing:number};
+ extra_capacity:{position_type:string;available:number}[];
+ has_requirements:boolean;
+ complete:boolean;
+};

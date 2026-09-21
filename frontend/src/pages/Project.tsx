@@ -5,6 +5,7 @@ import CanvasEditor from '../components/CanvasEditor';
 import Inspector from '../components/Inspector';
 import SuggestionsPanel from '../components/SuggestionsPanel';
 import DistributionPanel from '../components/DistributionPanel';
+import RequirementsPanel from '../components/RequirementsPanel';
 import type {Song,Template} from '../types';
 
 type SongRow={
@@ -87,6 +88,7 @@ export default function Project({id,onBack}:{id:number;onBack:()=>void}){
  const song:Song|undefined=data?.songs.find((s:Song)=>s.id===openSongId);
  const songRow:SongRow|undefined=songs.find(s=>s.id===openSongId);
  const songComps:CompRow[]=(data?.compositions||[]).filter((c:CompRow)=>c.song_id===openSongId);
+ const compUpdatedAt:string|null=(data?.compositions||[]).find((c:CompRow)=>c.id===compId)?.updated_at||null;
  const detected=Array.from(new Set((song?.assignments||[]).map(a=>a.position)));
  const placedPersonIds=new Set(elements.filter(e=>e.type==='person').map(e=>(e as any).personId));
 
@@ -457,6 +459,10 @@ export default function Project({id,onBack}:{id:number;onBack:()=>void}){
      {detected.length>0
       ?<div className="chips">{detected.map(p=><span className="chip" key={p}>{p}</span>)}</div>
       :<p className="hint">Sin puestos en esta canción.</p>}
+
+     {openSongId!=null&&(
+      <RequirementsPanel songId={openSongId} compositionId={compId} refreshKey={compUpdatedAt} dirty={isDirty}/>
+     )}
 
      {openSongId!=null&&songRow&&(
       <DistributionPanel songId={openSongId} songName={songRow.name}

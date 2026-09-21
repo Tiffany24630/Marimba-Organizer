@@ -15,7 +15,7 @@ export const api={
  renameSong:(id:number,name:string)=>req(`/songs/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})}),
  deleteSong:(id:number)=>req(`/songs/${id}`,{method:'DELETE'}),
  songHistory:(songId:number)=>req(`/songs/${songId}/history`),
- songRequirements:(songId:number)=>req(`/songs/${songId}/requirements`),
+ songRequirements:(songId:number,compositionId?:number|null)=>req(`/songs/${songId}/requirements${compositionId!=null?`?composition_id=${compositionId}`:''}`),
  songSuggestions:(songId:number)=>req(`/songs/${songId}/suggestions`),
  songDistribution:(songId:number)=>req(`/songs/${songId}/distribution-suggestion`),
  applyDistribution:(songId:number,payload:{proposals:any[];name?:string})=>req(`/songs/${songId}/distribution/apply`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),
