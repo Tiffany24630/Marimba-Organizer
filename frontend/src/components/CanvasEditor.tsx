@@ -99,6 +99,10 @@ export default function CanvasEditor(){
  const [size,setSize]=useState({w:900,h:620});
  const [zoom,setZoom]=useState(1);
  const [stagePos,setStagePos]=useState({x:0,y:0});
+ const [cursor,setCursor]=useState<'default'|'grab'|'grabbing'>('default');
+ const panStart=useRef<{sx:number;sy:number;px:number;py:number}|null>(null);
+ const pinch=useRef<{zoom:number;stx:number;sty:number;dist:number;cx:number;cy:number}|null>(null);
+ useEffect(()=>{const el=wrapRef.current;if(el)el.style.cursor=cursor;},[cursor]);
 
  useLayoutEffect(()=>{
   const el=wrapRef.current;
@@ -173,6 +177,102 @@ export default function CanvasEditor(){
   });
  },[elements,size,zoom]);
 
+ const clampZoom=(z:number)=>Math.max(0.3,Math.min(3,z));
+ const toStageXY=(t:any,rect:DOMRect)=>{return {x:t.clientX-rect.left,y:t.clientY-rect.top};};
+ const startPan=(px:number,py:number)=>{
+  const st=stageRef.current;if(!st)return;
+  panStart.current={sx:st.x(),sy:st.y(),px,py};
+  setCursor('grabbing');
+ };
+ const doPan=(px:number,py:number)=>{
+  if(!panStart.current)return;
+  const st=stageRef.current;if(!st)return;
+    const ps=panStart.current;
+  st.x(ps.sx+(px-ps.px));st.y(ps.sy+(py-ps.py));
+  layerRef.current?.batchDraw();
+ };
+ const endPan=()=>{
+  if(!panStart.current){setCursor('grab');return;}
+  panStart.current=null;
+  const st=stageRef.current;if(st){setStagePos({x:st.x(),y:st.y()});}
+  setCursor('default');
+ };
+ const onStageWheel=(e:any)=>{
+  e.evt.preventDefault();
+  const st=stageRef.current;if(!st)return;
+  const p=st.getPointerPosition();if(!p)return;
+  const oldZ=st.scaleX();
+  const delta=e.evt.deltaY<0?1.12:1/1.12;
+  const newZ=clampZoom(oldZ*delta);
+  const wx=(p.x-st.x())/oldZ,wy=(p.y-st.y())/oldZ;
+  setZoom(newZ);
+  setStagePos({x:p.x-wx*newZ,y:p.y-wy*newZ});
+ };
+ const onStageMouseDown=(e:any)=>{
+  const st=e.target.getStage();if(!st||e.target!==st)return;
+  select(null);
+  const p=st.getPointerPosition();if(!p)return;
+  startPan(p.x,p.y);
+ };
+ const onStageMouseMove=(e:any)=>{
+  if(!panStart.current)return;
+  const st=e.target.getStage();if(!st)return;
+  const p=st.getPointerPosition();if(!p)return;
+  doPan(p.x,p.y);
+ };
+ const onStageMouseUp=()=>{ endPan(); };
+ const onStageMouseLeave=()=>{ if(panStart.current)endPan(); else setCursor('default'); };
+ const onStageMouseEnter=(e:any)=>{ const st=e.target.getStage();if(st&&!panStart.current)setCursor('grab'); };
+ const onStageTouchStart=(e:any)=>{
+  const st=e.target.getStage();if(!st||e.target!==st)return;
+  const t=e.evt.touches;
+  if(t.length===1){
+   select(null);
+   const p=st.getPointerPosition();if(p)startPan(p.x,p.y);
+  }else if(t.length===2){
+   select(null);
+   const rect=st.container().getBoundingClientRect();
+   const a=toStageXY(t[0],rect),b=toStageXY(t[1],rect);
+   const dist=Math.hypot(b.x-a.x,b.y-a.y);
+   if(dist>10){
+    pinch.current={zoom:st.scaleX(),stx:st.x(),sty:st.y(),dist,cx:(a.x+b.x)/2,cy:(a.y+b.y)/2};
+   }
+   setCursor('grabbing');
+  }
+ };
+ const onStageTouchMove=(e:any)=>{
+  const st=e.target.getStage();if(!st)return;
+  const t=e.evt.touches;
+  if(t.length===1&&panStart.current){
+   const p=st.getPointerPosition();if(p)doPan(p.x,p.y);
+   return;
+  }
+  if(t.length===2&&pinch.current){
+   e.evt.preventDefault();
+   const rect=st.container().getBoundingClientRect();
+   const a=toStageXY(t[0],rect),b=toStageXY(t[1],rect);
+   const dist=Math.hypot(b.x-a.x,b.y-a.y);
+   if(dist<10)return;
+   const cx=(a.x+b.x)/2,cy=(a.y+b.y)/2;
+   const pc=pinch.current;
+   const newZ=clampZoom(pc.zoom*dist/pc.dist);
+   const wx=(cx-pc.stx)/pc.zoom,wy=(cy-pc.sty)/pc.zoom;
+   st.x(cx-newZ*wx);st.y(cy-newZ*wy);st.scale({x:newZ,y:newZ});
+   layerRef.current?.batchDraw();
+  }
+ };
+ const onStageTouchEnd=(e:any)=>{
+  const st=e.target.getStage();if(!st)return;
+  const t=e.evt.touches;
+  if(t.length===0&&panStart.current){endPan();return;}
+  if(t.length<2&&pinch.current){
+   setZoom(clampZoom(st.scaleX()));
+   setStagePos({x:st.x(),y:st.y()});
+   pinch.current=null;
+   setCursor('grab');
+  }
+ };
+
  const exportPNG=()=>{
   const st=stageRef.current,ly=layerRef.current,tr=trRef.current;
   if(!st||!ly||!elements.length)return;
@@ -236,9 +336,17 @@ export default function CanvasEditor(){
    </div>
 
    <Stage ref={stageRef} width={size.w} height={size.h}
-    scaleX={zoom} scaleY={zoom} x={stagePos.x} y={stagePos.y}
-    onMouseDown={ev=>{if(ev.target===ev.target.getStage())select(null);}}
-    onTouchStart={ev=>{if(ev.target===ev.target.getStage())select(null);}}>
+  scaleX={zoom} scaleY={zoom} x={stagePos.x} y={stagePos.y}
+  onMouseEnter={onStageMouseEnter}
+  onMouseLeave={onStageMouseLeave}
+  onMouseDown={onStageMouseDown}
+  onMouseMove={onStageMouseMove}
+  onMouseUp={onStageMouseUp}
+  onWheel={onStageWheel}
+  onTouchStart={onStageTouchStart}
+  onTouchMove={onStageTouchMove}
+  onTouchEnd={onStageTouchEnd}
+  onTouchCancel={onStageTouchEnd}>
     <Layer ref={layerRef}>
      {elements.filter(e=>e.type==='marimba').map(e=>(
       <MarimbaNode key={e.id} m={e as MarimbaElement} selected={selectedId===e.id}/>))}
@@ -261,4 +369,3 @@ export default function CanvasEditor(){
   </div>
  );
 }
-

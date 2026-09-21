@@ -82,7 +82,8 @@ type State={
  selectedId:string|null;
  history:Element[][];
  future:Element[][];
- isDirty:boolean;
+  isDirty:boolean;
+ savedSig:string;
  setElements:(raw:unknown)=>void;
  select:(id:string|null)=>void;
  markClean:()=>void;
@@ -113,16 +114,14 @@ export const useComposition=create<State>((set)=>({
  selectedId:null,
  history:[],
  future:[],
- isDirty:false,
- setElements:raw=>set({
-  elements:(Array.isArray(raw)?raw:[]).map(normalizeElement).filter((e):e is Element=>!!e),
-  selectedId:null,
-  history:[],
-  future:[],
   isDirty:false,
- }),
+ savedSig:'',
+ setElements:raw=>{
+  const els=(Array.isArray(raw)?raw:[]).map(normalizeElement).filter((e):e is Element=>!!e);
+  return set({elements:els,selectedId:null,history:[],future:[],isDirty:false,savedSig:JSON.stringify(els)});
+ },
  select:id=>set({selectedId:id}),
- markClean:()=>set({isDirty:false}),
+  markClean:()=>set(s=>({isDirty:false,savedSig:JSON.stringify(s.elements)})),
  markDirty:()=>set({isDirty:true}),
  recordHistory:()=>set(s=>({
   history:[...s.history.slice(-29),cloneEls(s.elements)],
@@ -134,11 +133,11 @@ export const useComposition=create<State>((set)=>({
   const prev=s.history[s.history.length-1];
   const newHistory=s.history.slice(0,-1);
   return {
-   elements:prev,
+      elements:prev,
    history:newHistory,
    future:[cloneEls(s.elements),...s.future.slice(0,29)],
    selectedId:null,
-   isDirty:true,
+   isDirty:JSON.stringify(prev)!==s.savedSig,
   };
  }),
  redo:()=>set(s=>{
@@ -146,11 +145,11 @@ export const useComposition=create<State>((set)=>({
   const next=s.future[0];
   const newFuture=s.future.slice(1);
   return {
-   elements:next,
+      elements:next,
    history:[...s.history.slice(-29),cloneEls(s.elements)],
    future:newFuture,
    selectedId:null,
-   isDirty:true,
+   isDirty:JSON.stringify(next)!==s.savedSig,
   };
  }),
  toggleLock:id=>set(s=>{
