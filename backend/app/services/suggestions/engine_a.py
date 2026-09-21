@@ -21,17 +21,16 @@ def get_previous_song(song, db):
 
     return below[-1] if below else None
 
-def get_real_slots(previous_song, db):
-    if previous_song is None:
-        return []
-    
-    comps = [c for c in previous_song.project.compositions
-             if c.song_id == previous_song.id and c.data]
-    
-    if not comps:
+def slots_from_composition(comp):
+    """Extraer los puestos reales de una composicion.
+
+    Es la fuente unica de interpretacion de `composition.data['elements']`:
+    devuelve una lista de slots {marimba_name, slot_id, position_type,
+    slot_index, occupied_by}. Si la composicion no tiene marimbas devuelve [].
+    """
+    if comp is None:
         return []
 
-    comp = sorted(comps, key=lambda c: c.id)[-1]
     data = comp.data or {}
     elements = data.get('elements', []) if isinstance(data, dict) else []
 
@@ -58,6 +57,18 @@ def get_real_slots(previous_song, db):
 
     return [{'marimba_name': names.get(m, m), 'slot_id': s, 'position_type': t,
              'slot_index': i, 'occupied_by': occ.get(s)} for (m, s, t, i) in defs]
+
+def get_real_slots(previous_song, db):
+    if previous_song is None:
+        return []
+
+    comps = [c for c in previous_song.project.compositions
+             if c.song_id == previous_song.id and c.data]
+
+    if not comps:
+        return []
+
+    return slots_from_composition(sorted(comps, key=lambda c: c.id)[-1])
 
 def get_previous_assignment_map(previous_song, db):
     if previous_song is None:

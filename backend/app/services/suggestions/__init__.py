@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 from app.models import Song, Project
 from app.services.suggestions.history import get_person_history
-from app.services.suggestions.requirements import get_song_requirements, get_song_assignments
+from app.services.suggestions.requirements import get_song_requirements, get_song_assignments, get_song_requirements_report
 from app.services.suggestions.movement import analyze_changes
 from app.services.suggestions.distributor import generate_proposals, create_composition_from_proposals
 

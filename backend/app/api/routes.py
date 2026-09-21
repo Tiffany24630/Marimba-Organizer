@@ -11,7 +11,7 @@ from app.services.suggestions.distribution import get_distribution_for_song
 from app.services.suggestions.distributor import create_composition_from_proposals
 from app.services.suggestions.engine_e import create_distribution_composition
 from app.services.suggestions.history import get_person_history
-from app.services.suggestions.requirements import get_song_requirements
+from app.services.suggestions.requirements import get_song_requirements_report
 
 router=APIRouter()
 
@@ -395,9 +395,8 @@ def song_history(song_id:int, db:Session=Depends(get_db)):
     return get_person_history(song.project_id, db, exclude_song_id=song_id)
 
 @router.get('/songs/{song_id}/requirements')
-def song_requirements(song_id:int, db:Session=Depends(get_db)):
-    counts=get_song_requirements(song_id,db)
-    return {'position_counts':counts}
+def song_requirements(song_id:int, composition_id:int|None=None, db:Session=Depends(get_db)):
+    return get_song_requirements_report(song_id, db, composition_id=composition_id)
 
 @router.get('/songs/{song_id}/suggestions')
 def song_suggestions(song_id:int, db:Session=Depends(get_db)):
