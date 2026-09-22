@@ -37,7 +37,10 @@ export default function Project({id,onBack}:{id:number;onBack:()=>void}){
  const [compId,setCompId]=useState<number|null>(null);
  const [compName,setCompName]=useState('');
  const [saveStatus,setSaveStatus]=useState<'idle'|'saving'|'saved'|'error'>('idle');
- const [newSong,setNewSong]=useState('');
+  const [newSong,setNewSong]=useState('');
+ const [sidebarW,setSidebarW]=useState(280);
+ const [isResizing,setIsResizing]=useState(false);
+ const [showInspector,setShowInspector]=useState(false);
 
  const {
   elements,
@@ -75,6 +78,17 @@ export default function Project({id,onBack}:{id:number;onBack:()=>void}){
  },[id,setElements,select]);
 
  useEffect(()=>{
+  const onKey=(e:KeyboardEvent)=>{
+   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){
+    e.preventDefault();
+    if(!data||openSongId==null)return;
+    if(isDirty) save();
+   }
+  };
+  window.addEventListener('keydown',onKey);
+  return()=>window.removeEventListener('keydown',onKey);
+ },[]);
+ useEffect(()=>{
   const handleBeforeUnload=(e:BeforeUnloadEvent)=>{
    if(isDirty){
     e.preventDefault();
@@ -83,7 +97,29 @@ export default function Project({id,onBack}:{id:number;onBack:()=>void}){
   };
   window.addEventListener('beforeunload',handleBeforeUnload);
   return()=>window.removeEventListener('beforeunload',handleBeforeUnload);
- },[isDirty]);
+  },[isDirty]);
+ useEffect(()=>{
+  if(!isResizing)return;
+  const onMove=(e:MouseEvent|TouchEvent)=>{
+   const el=document.getElementById('app')?.querySelector('.workspace') as HTMLElement|null;
+   if(!el)return;
+   const rect=el.getBoundingClientRect();
+   const x=(e instanceof TouchEvent ? e.touches?.[0]?.clientX : e.clientX)-rect.left;
+   setSidebarW(Math.max(220,Math.min(520,x)));
+  };
+  const onEnd=()=>{setIsResizing(false);};
+  document.addEventListener('mousemove',onMove);
+  document.addEventListener('mouseup',onEnd);
+  document.addEventListener('touchmove',onMove,{passive:false});
+  document.addEventListener('touchend',onEnd);
+  return()=>{
+   document.removeEventListener('mousemove',onMove);
+   document.removeEventListener('mouseup',onEnd);
+   document.removeEventListener('touchmove',onMove);
+   document.removeEventListener('touchend',onEnd);
+  };
+ },[isResizing]);
+ useEffect(()=>{ setShowInspector(false); },[compId]);
 
  const song:Song|undefined=data?.songs.find((s:Song)=>s.id===openSongId);
  const songRow:SongRow|undefined=songs.find(s=>s.id===openSongId);
@@ -444,7 +480,13 @@ export default function Project({id,onBack}:{id:number;onBack:()=>void}){
    </header>
 
    <div className="workspace">
-    <aside className="sidebar">
+    <aside className="sidebar" style={{width:sidebarW,maxWidth:sidebarW,minWidth:0}}>
+     <div className="sidebar-head">
+      <h3>Distribución</h3>
+      <button className="icon toggle-btn" id="toggle-inspector" aria-label="Abrir inspector" title="Abrir inspector"
+       onClick={()=>setShowInspector(v=>!v)}>🔍</button>
+     </div>
+     <p className="hint canvas-hint">Arrastra sobre el lienzo para moverlo; rueda o pellizca para hacer zoom.</p>
      <h3>Personas de la pieza</h3>
      {(song?.assignments||[]).length===0&&<p className="hint">Sin personas en esta canción.</p>}
      {(song?.assignments||[]).map((a:any)=>{
@@ -467,18 +509,16 @@ export default function Project({id,onBack}:{id:number;onBack:()=>void}){
      {openSongId!=null&&songRow&&(
       <DistributionPanel songId={openSongId} songName={songRow.name}
        onApplied={(comp:any)=>{
-        setData((d:any)=>d?{...d,compositions:[...(d.compositions||[]),comp]}:d);
-        setCompId(comp.id);setCompName(comp.name||'');
-        setElements(comp.data?.elements||[]);select(null);reloadSongs(id);
+        setData((d:any)=>d?{...d,compositions:[...(d?.compositions||[]),comp]}:d);
+        setCompId(comp.id);setCompName(comp.name||'');setElements(comp.data?.elements||[]);select(null);reloadSongs(id);
        }} />
      )}
 
      {openSongId!=null&&songRow&&(
       <SuggestionsPanel songId={openSongId} songName={songRow.name}
        onApplied={(comp:any)=>{
-        setData((d:any)=>d?{...d,compositions:[...(d.compositions||[]),comp]}:d);
-        setCompId(comp.id);setCompName(comp.name||'');
-        setElements(comp.data?.elements||[]);select(null);reloadSongs(id);
+        setData((d:any)=>d?{...d,compositions:[...(d?.compositions||[]),comp]}:d);
+        setCompId(comp.id);setCompName(comp.name||'');setElements(comp.data?.elements||[]);select(null);reloadSongs(id);
        }}/>
      )}
 
@@ -492,9 +532,9 @@ export default function Project({id,onBack}:{id:number;onBack:()=>void}){
      </button>
      <p className="hint">Las plantillas son solo punto de partida: luego puedes agregar, quitar, cambiar o reordenar puestos sin afectar la plantilla.</p>
     </aside>
-
+    <div className={`splitter ${isResizing?'dragging':''}`} onMouseDown={()=>setIsResizing(true)} onTouchStart={()=>setIsResizing(true)} aria-hidden="true"></div>
     <section className="canvas-panel"><CanvasEditor/></section>
-    <Inspector detectedPositions={detected}/>
+    <Inspector detectedPositions={detected} drawerOpen={showInspector} onDrawerToggle={setShowInspector}/>
    </div>
   </main>
  );

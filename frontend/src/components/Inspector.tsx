@@ -5,7 +5,11 @@ import {slotRect} from '../lib/layout';
 
 const DEFAULT_TYPES=['Primera','Segunda','Centro','Bajo','Tenor','Timbal','Contra','Teclado','Marimba Doble Agudo'];
 
-export default function Inspector({detectedPositions}:{detectedPositions:string[]}){
+export default function Inspector({detectedPositions,drawerOpen,onDrawerToggle}:{
+ detectedPositions:string[];
+ drawerOpen?:boolean;
+ onDrawerToggle?:(v:boolean)=>void;
+}){
  const elements=useComposition(s=>s.elements);
  const selectedId=useComposition(s=>s.selectedId);
  const update=useComposition(s=>s.update);
@@ -18,6 +22,7 @@ export default function Inspector({detectedPositions}:{detectedPositions:string[
  const unassign=useComposition(s=>s.unassign);
  const addCustomMarimba=useComposition(s=>s.addCustomMarimba);
  const [newType,setNewType]=useState('Primera');
+ const drawer=onDrawerToggle!==undefined; const inspectorCls=drawer?(`inspector drawer ${drawerOpen?'open':'closed'}`):'inspector';
 
  const e=elements.find(x=>x.id===selectedId)||null;
 
@@ -40,9 +45,15 @@ export default function Inspector({detectedPositions}:{detectedPositions:string[
   const m=e as MarimbaElement;
   const occupied=m.positions.filter(p=>p.personId!=null).length;
   const isLocked=Boolean(m.locked);
+  const confirmDeleteMarimba=()=>{
+   const occupied=elements.filter((x):x is PersonElement=>x.type==='person'&&x.marimbaId===m.id&&x.marimbaPositionId!=null);
+   const names=occupied.map(x=>x.name);
+   if(names.length>0&&!window.confirm(`Esta marimba tiene ${names.length} persona(s) asignada(s):\n${names.join('\n')}\n\n¿Eliminarla de todas formas? Se borrarán también sus puestos.`))return;
+   remove(m.id);
+  };
 
   return (
-   <aside className="inspector">
+   <aside className={inspectorCls}>
     <div className="inspector-header">
      <h3>Marimba seleccionada {isLocked?'🔒':''}</h3>
      <button className={`lock-btn ${isLocked?'locked':''}`} onClick={()=>toggleLock(m.id)}>
@@ -83,7 +94,7 @@ export default function Inspector({detectedPositions}:{detectedPositions:string[
       <span className="occ" title={p.personId?'Ocupado por persona':'Libre'}>{p.personId?'✓':'○'}</span>
       <button title="Subir posición" disabled={isLocked||i===0} onClick={()=>movePosition(m.id,p.id,-1)}>↑</button>
       <button title="Bajar posición" disabled={isLocked||i===m.positions.length-1} onClick={()=>movePosition(m.id,p.id,1)}>↓</button>
-      <button className="mini danger" title="Eliminar posición" disabled={isLocked} onClick={()=>removePosition(m.id,p.id)}>✕</button>
+      <button className="mini danger" title="Eliminar posición" disabled={isLocked} onClick={()=>{if(p.personId!=null){const who=elements.find((x):x is PersonElement=>x.type==='person'&&x.personId===p.personId);if(who&&!window.confirm(`Esta posición está ocupada por ${who.name}. ¿Quitarla y eliminar el puesto?`))return;}removePosition(m.id,p.id);}}>✕</button>
      </div>
     ))}
 
@@ -93,8 +104,8 @@ export default function Inspector({detectedPositions}:{detectedPositions:string[
      <button className="primary" disabled={isLocked} onClick={()=>{addPosition(m.id,newType);setNewType('Primera');}}>＋ Agregar posición</button>
     </div>
 
-    <button className="danger" disabled={isLocked} onClick={()=>remove(m.id)}>
-     {isLocked?'Desbloquea para eliminar':'Eliminar marimba'}
+    <button className="danger" disabled={isLocked} onClick={confirmDeleteMarimba}>
+      {isLocked?'Desbloquea para eliminar':'Eliminar marimba'}
     </button>
    </aside>
   );
@@ -108,7 +119,7 @@ export default function Inspector({detectedPositions}:{detectedPositions:string[
   const pos=m&&idx>=0?m.positions[idx]:null;
 
   return (
-   <aside className="inspector">
+   <aside className={inspectorCls}>
     <div className="inspector-header">
      <h3>Persona seleccionada {isLocked?'🔒':''}</h3>
      <button className={`lock-btn ${isLocked?'locked':''}`} onClick={()=>toggleLock(p.id)}>
@@ -146,7 +157,7 @@ export default function Inspector({detectedPositions}:{detectedPositions:string[
  }
 
  return (
-  <aside className="inspector">
+  <aside className={inspectorCls}>
    <h3>Propiedades</h3>
    <p className="hint">Selecciona una marimba o persona en el lienzo para ver y editar sus propiedades.</p>
    <h4>Resumen</h4>
