@@ -1,4 +1,4 @@
-import {useState,createContext,useContext,useRef} from 'react';
+import {useState,createContext,useContext,useRef,useEffect} from 'react';
 
 export interface ConfirmOptions{
  title:string;
@@ -31,17 +31,16 @@ export const useConfirm=()=>{
 
 export default function ConfirmProvider({children}:{children:React.ReactNode}){
  const [state,setState]=useState<ConfirmState|null>(null);
- const nextRef=useRef(0);
-
- const show=(opts:ConfirmOptions)=>{
-  return new Promise<boolean>(resolve=>{
-   const id=++nextRef.current;
-   setState({open:true,options:opts,resolve:v=>{if(nextRef.current===id){nextRef.current=0;resolve(v);}}});
-  });
+ const pending=useRef<((v:boolean)=>void)|null>(null);
+ useEffect(()=>()=>{pending.current?.(false);pending.current=null;},[]);
+ const resolve=(value:boolean)=>{
+  const callback=pending.current;pending.current=null;setState(null);callback?.(value);
  };
-
- const dismiss=()=>setState(null);
- const resolve=(value:boolean)=>state&&setState(null);
+ const show=(opts:ConfirmOptions)=>new Promise<boolean>(done=>{
+  pending.current?.(false);
+  pending.current=done;
+  setState({open:true,options:opts,resolve:done});
+ });
 
  return (
   <ConfirmCtx.Provider value={{show}}>

@@ -2,6 +2,9 @@ const API=import.meta.env.VITE_API_URL||'http://localhost:8000/api';
 async function req(path:string,options:RequestInit={}){const r=await fetch(API+path,options); if(!r.ok) throw new Error(await r.text()); return r.json();}
 export const api={
  projects:()=>req('/projects'), project:(id:number)=>req(`/projects/${id}`), people:()=>req('/people'),
+ createPerson:(name:string)=>req('/people',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})}),
+ renamePerson:(id:number,name:string)=>req(`/people/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})}),
+ deletePerson:(id:number)=>req(`/people/${id}`,{method:'DELETE'}),
  positions:()=>req('/positions'), templates:()=>req('/marimba-templates'),
  preview:(file:File)=>{const f=new FormData();f.append('file',file);return req('/imports/preview',{method:'POST',body:f})},
  confirm:(payload:any)=>req('/imports/confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),

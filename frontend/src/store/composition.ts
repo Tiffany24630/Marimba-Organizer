@@ -45,7 +45,8 @@ function withRepositioned(els:Element[],m:MarimbaElement):Element[]{
 
 function applyAssign(els:Element[],personElId:string,marimbaId:string,positionId:string):Element[]{
  const person=els.find(e=>e.id===personElId);
- if(!person||person.type!=='person')return els;
+ if(!person||person.type!=='person'||assignmentError(els,personElId,marimbaId,positionId))return els;
+ if(person.marimbaId===marimbaId&&person.marimbaPositionId===positionId)return els;
  const marimba=els.find(e=>e.id===marimbaId);
  if(!marimba||marimba.type!=='marimba')return els;
  const idx=marimba.positions.findIndex(p=>p.id===positionId);
@@ -65,7 +66,10 @@ function applyAssign(els:Element[],personElId:string,marimbaId:string,positionId
  out=out.map(el=>{
   if(el.type!=='person')return el;
   if(el.id===personElId)return {...el,marimbaId,marimbaPositionId:positionId,x:c.x,y:c.y,rotation:marimba.rotation};
-  if(el.marimbaId===marimbaId&&el.marimbaPositionId===positionId)return {...el,marimbaId:null,marimbaPositionId:null};
+  if(el.marimbaId===marimbaId&&el.marimbaPositionId===positionId){
+   const rr=slotRect(marimba,idx);
+   return {...el,marimbaId:null,marimbaPositionId:null,rotation:0,x:c.x,y:c.y+rr.height/2+PERSON_H/2+8};
+  }
   return el;
  });
  return out;
@@ -75,17 +79,43 @@ function cloneEls(els:Element[]):Element[]{
  return JSON.parse(JSON.stringify(els));
 }
 
+export function compatiblePosition(a:string,b:string){
+ return a.trim().normalize('NFKC').toLocaleLowerCase()===b.trim().normalize('NFKC').toLocaleLowerCase();
+}
+
+export function elementLocked(els:Element[],id:string):boolean{
+ const e=els.find(x=>x.id===id);
+ if(!e||e.locked)return true;
+ if(e.type==='person')return els.some(x=>x.type==='marimba'&&x.id===e.marimbaId&&x.locked);
+ return els.some(x=>x.type==='person'&&x.marimbaId===id&&x.locked);
+}
+
+export function assignmentError(els:Element[],personId:string,marimbaId:string,slotId:string):string|null{
+ const p=els.find(x=>x.id===personId);
+ const m=els.find((x):x is MarimbaElement=>x.id===marimbaId&&x.type==='marimba');
+ const slot=m?.positions.find(x=>x.id===slotId);
+ if(!p||p.type!=='person'||!m||!slot)return 'La persona o el puesto ya no existe.';
+ if(elementLocked(els,p.id)||m.locked)return 'Desbloquea la persona y las marimbas antes de asignar.';
+ const occupant=els.find(x=>x.type==='person'&&x.personId===slot.personId);
+ if(occupant&&elementLocked(els,occupant.id))return 'El ocupante está bloqueado.';
+ if(!compatiblePosition(p.positionType,slot.type))return `Puesto incompatible: ${p.positionType} / ${slot.type}. Retira la persona antes de cambiar su tipo musical.`;
+ return null;
+}
+
 type Geometry={x:number;y:number;rotation:number;scaleX:number;scaleY:number};
 
 type State={
  elements:Element[];
  selectedId:string|null;
+ focusId:string|null;
  history:Element[][];
  future:Element[][];
   isDirty:boolean;
  savedSig:string;
  setElements:(raw:unknown)=>void;
  select:(id:string|null)=>void;
+ focus:(id:string)=>void;
+ clearFocus:()=>void;
  markClean:()=>void;
  markDirty:()=>void;
  recordHistory:()=>void;
@@ -96,11 +126,14 @@ type State={
  addMarimba:(m:{name:string,positions:string[]})=>void;
  addCustomMarimba:(name?:string)=>void;
  update:(id:string,patch:Partial<PersonElement>&Partial<MarimbaElement>)=>void;
+ renamePerson:(personElId:string,name:string)=>void;
+ removePersonFromProject:(personElId:string)=>void;
  remove:(id:string)=>void;
  clear:()=>void;
  addPosition:(marimbaId:string,type:string)=>void;
  removePosition:(marimbaId:string,positionId:string)=>void;
  setPositionType:(marimbaId:string,positionId:string,type:string)=>void;
+ setPersonPositionType:(personElId:string,type:string)=>void;
  movePosition:(marimbaId:string,positionId:string,dir:-1|1)=>void;
  assign:(personElId:string,marimbaId:string,positionId:string)=>void;
  unassign:(personElId:string,at:{x:number,y:number}|null)=>void;
@@ -112,6 +145,7 @@ type State={
 export const useComposition=create<State>((set)=>({
  elements:[],
  selectedId:null,
+ focusId:null,
  history:[],
  future:[],
   isDirty:false,
@@ -121,6 +155,8 @@ export const useComposition=create<State>((set)=>({
   return set({elements:els,selectedId:null,history:[],future:[],isDirty:false,savedSig:JSON.stringify(els)});
  },
  select:id=>set({selectedId:id}),
+ focus:id=>set({selectedId:id,focusId:id}),
+ clearFocus:()=>set({focusId:null}),
   markClean:()=>set(s=>({isDirty:false,savedSig:JSON.stringify(s.elements)})),
  markDirty:()=>set({isDirty:true}),
  recordHistory:()=>set(s=>({
@@ -206,10 +242,8 @@ export const useComposition=create<State>((set)=>({
  update:(id,patch)=>set(s=>{
   const el=s.elements.find(e=>e.id===id);
   if(!el)return {};
-  // If locked, disallow modifying geometry directly through update unless toggling locked
-  if(el.locked&&!('locked' in patch)&&('x' in patch||'y' in patch||'rotation' in patch||'scaleX' in patch)){
-   return {};
-  }
+  if(elementLocked(s.elements,id))return {};
+  if(Object.entries(patch).every(([key,value])=>(el as any)[key]===value))return {};
   return {
    history:[...s.history.slice(-29),cloneEls(s.elements)],
    future:[],
@@ -217,9 +251,33 @@ export const useComposition=create<State>((set)=>({
    isDirty:true,
   };
  }),
+ renamePerson:(personElId,name)=>set(s=>{
+  const pe=s.elements.find(e=>e.id===personElId);
+  if(!pe||pe.type!=='person')return {};
+  const n=name.trim();
+  if(!n)return {};
+  return {
+   history:[...s.history.slice(-29),cloneEls(s.elements)],
+   future:[],
+   elements:s.elements.map(e=>e.type==='person'&&e.personId===pe.personId?{...e,name:n}:e),
+   isDirty:true,
+  };
+ }),
+ removePersonFromProject:(personElId)=>set(s=>{
+  const pe=s.elements.find(e=>e.id===personElId);
+  if(!pe||pe.type!=='person'||elementLocked(s.elements,personElId))return {};
+  return {
+   history:[...s.history.slice(-29),cloneEls(s.elements)],
+   future:[],
+   elements:s.elements.filter(e=>!(e.type==='person'&&e.personId===pe.personId))
+    .map(e=>e.type==='marimba'?{...e,positions:e.positions.map(pp=>pp.personId===pe.personId?{...pp,personId:null}:pp)}:e),
+   selectedId:null,
+   isDirty:true,
+  };
+ }),
  remove:id=>set(s=>{
   const el=s.elements.find(e=>e.id===id);
-  if(!el||el.locked)return {};
+  if(!el||elementLocked(s.elements,id))return {};
   if(el.type==='person'){
    const elements=s.elements.filter(e=>e.id!==id).map(e=>e.type==='marimba'
     ?{...e,positions:e.positions.map(p=>p.personId===el.personId?{...p,personId:null}:p)}:e);
@@ -297,6 +355,24 @@ export const useComposition=create<State>((set)=>({
    isDirty:true,
   };
  }),
+ setPersonPositionType:(personElId,type)=>set(s=>{
+  const pe=s.elements.find(e=>e.id===personElId);
+  if(!pe||pe.type!=='person'||elementLocked(s.elements,personElId))return {};
+  const t=type.trim()||pe.positionType;
+  if(t===pe.positionType)return {};
+  const m=s.elements.find((e):e is MarimbaElement=>e.id===pe.marimbaId&&e.type==='marimba');
+  const slot=m?.positions.find(p=>p.id===pe.marimbaPositionId);
+  if(slot&&!compatiblePosition(t,slot.type))return {};
+  return {
+   history:[...s.history.slice(-29),cloneEls(s.elements)],
+   future:[],
+   elements:s.elements.map(el=>{
+    if(el.id===personElId&&el.type==='person')return {...el,positionType:t};
+    return el;
+   }),
+   isDirty:true,
+  };
+ }),
  movePosition:(marimbaId,positionId,dir)=>set(s=>{
   const m=s.elements.find(e=>e.id===marimbaId);
   if(!m||m.type!=='marimba'||m.locked)return {};
@@ -316,7 +392,8 @@ export const useComposition=create<State>((set)=>({
  assign:(personElId,marimbaId,positionId)=>set(s=>{
   const pe=s.elements.find(e=>e.id===personElId);
   const m=s.elements.find(e=>e.id===marimbaId);
-  if(pe?.locked||m?.locked)return {};
+  if(assignmentError(s.elements,personElId,marimbaId,positionId))return {};
+  if(pe?.type==='person'&&pe.marimbaId===marimbaId&&pe.marimbaPositionId===positionId)return {};
   return {
    history:[...s.history.slice(-29),cloneEls(s.elements)],
    future:[],
@@ -326,7 +403,7 @@ export const useComposition=create<State>((set)=>({
  }),
  unassign:(personElId,at)=>set(s=>{
   const pe=s.elements.find(e=>e.id===personElId);
-  if(!pe||pe.type!=='person'||pe.locked)return {};
+  if(!pe||pe.type!=='person'||elementLocked(s.elements,personElId)||!pe.marimbaId)return {};
   return {
    history:[...s.history.slice(-29),cloneEls(s.elements)],
    future:[],
@@ -340,7 +417,8 @@ export const useComposition=create<State>((set)=>({
  }),
  dropPerson:(personElId,pointer,fallback)=>set(s=>{
   const pe=s.elements.find(e=>e.id===personElId);
-  if(!pe||pe.type!=='person'||pe.locked)return {};
+  if(!pe||pe.type!=='person'||elementLocked(s.elements,personElId))return {};
+  if(!pointer&&!pe.marimbaId&&pe.x===fallback.x&&pe.y===fallback.y&&pe.rotation===fallback.rotation)return {};
   if(pointer){
    const marimbas=s.elements.filter((e):e is MarimbaElement=>e.type==='marimba');
    for(let i=marimbas.length-1;i>=0;i--){
@@ -351,7 +429,7 @@ export const useComposition=create<State>((set)=>({
     const posId=m.positions[nearestSlot(m,l)]?.id;
     if(!posId)break;
     if(pe.marimbaId===m.id&&pe.marimbaPositionId===posId)return {};
-    if(m.locked)return {};
+    if(assignmentError(s.elements,personElId,m.id,posId))return {};
     return {
      history:[...s.history.slice(-29),cloneEls(s.elements)],
      future:[],
@@ -394,4 +472,3 @@ export const useComposition=create<State>((set)=>({
   return {elements:withRepositioned(els,m),isDirty:true};
  }),
 }));
-

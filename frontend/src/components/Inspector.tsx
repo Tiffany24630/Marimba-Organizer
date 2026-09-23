@@ -1,7 +1,9 @@
 import {useState} from 'react';
 import {useComposition} from '../store/composition';
 import type {MarimbaElement,PersonElement} from '../types';
-import {slotRect} from '../lib/layout';
+import {slotCenter,slotRect} from '../lib/layout';
+import {api} from '../lib/api';
+import {useConfirm} from '../hooks/useConfirm';
 
 const DEFAULT_TYPES=['Primera','Segunda','Centro','Bajo','Tenor','Timbal','Contra','Teclado','Marimba Doble Agudo'];
 
@@ -20,6 +22,9 @@ export default function Inspector({detectedPositions,drawerOpen,onDrawerToggle}:
  const setPositionType=useComposition(s=>s.setPositionType);
  const movePosition=useComposition(s=>s.movePosition);
  const unassign=useComposition(s=>s.unassign);
+ const setPersonPositionType=useComposition(s=>s.setPersonPositionType);
+ const renamePerson=useComposition(s=>s.renamePerson);
+ const removePersonFromProject=useComposition(s=>s.removePersonFromProject);
  const addCustomMarimba=useComposition(s=>s.addCustomMarimba);
  const [newType,setNewType]=useState('Primera');
  const drawer=onDrawerToggle!==undefined; const inspectorCls=drawer?(`inspector drawer ${drawerOpen?'open':'closed'}`):'inspector';
@@ -94,6 +99,7 @@ export default function Inspector({detectedPositions,drawerOpen,onDrawerToggle}:
       <span className="occ" title={p.personId?'Ocupado por persona':'Libre'}>{p.personId?'✓':'○'}</span>
       <button title="Subir posición" disabled={isLocked||i===0} onClick={()=>movePosition(m.id,p.id,-1)}>↑</button>
       <button title="Bajar posición" disabled={isLocked||i===m.positions.length-1} onClick={()=>movePosition(m.id,p.id,1)}>↓</button>
+      {p.personId!=null&&(()=>{const who=elements.find((x):x is PersonElement=>x.type==='person'&&x.personId===p.personId);if(!who)return null;const cc=slotCenter(m,i);const rr=slotRect(m,i);return <button className="mini" title={`Quitar a ${who.name} del puesto (la persona no se elimina)`} disabled={isLocked} onClick={()=>unassign(who.id,{x:cc.x-rr.width/2,y:cc.y-rr.height/2})}>⏏</button>;})()}
       <button className="mini danger" title="Eliminar posición" disabled={isLocked} onClick={()=>{if(p.personId!=null){const who=elements.find((x):x is PersonElement=>x.type==='person'&&x.personId===p.personId);if(who&&!window.confirm(`Esta posición está ocupada por ${who.name}. ¿Quitarla y eliminar el puesto?`))return;}removePosition(m.id,p.id);}}>✕</button>
      </div>
     ))}
@@ -127,11 +133,18 @@ export default function Inspector({detectedPositions,drawerOpen,onDrawerToggle}:
      </button>
     </div>
 
-    <p className="person-name"><strong>{p.name}</strong></p>
+    <label className="field">Nombre
+     <input defaultValue={p.name} key={p.id+p.name} onBlur={ev=>{
+      const n=ev.target.value.trim();
+      if(!n||n===p.name)return;
+      renamePerson(p.id,n);
+      api.renamePerson(p.personId,n).catch((e:any)=>{alert('No se pudo guardar el nombre: '+(e.message||e));ev.target.value=p.name;});
+     }}/>
+    </label>
     {datalist}
 
     <label className="field">Puesto musical
-     <input list={listId} value={p.positionType} onChange={ev=>update(p.id,{positionType:ev.target.value})}/>
+     <input list={listId} value={p.positionType} onChange={ev=>setPersonPositionType(p.id,ev.target.value)}/>
     </label>
 
     <div className="row2">
@@ -148,9 +161,12 @@ export default function Inspector({detectedPositions,drawerOpen,onDrawerToggle}:
      ?<p className="hint">En <strong>{m.name}</strong> · posición física p{idx} ({pos.type})</p>
      :<p className="hint">Libre en el lienzo. Arrástrala sobre una marimba para asignarle un puesto.</p>}
 
-    {m&&pos&&<button disabled={isLocked} onClick={()=>{const r=slotRect(m,idx);unassign(p.id,{x:p.x-r.width/2,y:p.y-r.height/2});}}>Quitar de la marimba</button>}
-    <button className="danger" disabled={isLocked} onClick={()=>remove(p.id)}>
-     {isLocked?'Desbloquea para eliminar':'Eliminar persona'}
+    {m&&pos&&<button disabled={isLocked} onClick={()=>{const r=slotRect(m,idx);unassign(p.id,{x:p.x-r.width/2,y:p.y-r.height/2});}}>Quitar del puesto</button>}
+    <button className="danger" disabled={isLocked} onClick={()=>{
+     if(m&&pos&&!window.confirm(`${p.name} está asignada a ${m.name} (${pos.type}). ¿Eliminar la persona del lienzo? El puesto quedará libre.`))return;
+     remove(p.id);
+    }}>
+     {isLocked?'Desbloquea para eliminar':'Eliminar del proyecto'}
     </button>
    </aside>
   );

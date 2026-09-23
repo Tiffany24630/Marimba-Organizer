@@ -32,6 +32,12 @@ class CompositionPatch(BaseModel):
     name:str|None=None
     song_id:int|None=None
 
+class PersonIn(BaseModel):
+    name:str
+
+class PersonPatch(BaseModel):
+    name:str
+
 class ApplySuggestions(BaseModel):
     proposals:list[dict]
     name:str|None=None

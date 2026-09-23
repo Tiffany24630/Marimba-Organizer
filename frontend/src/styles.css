@@ -112,3 +112,39 @@
 .req-status.missing{color:#dc2626}
 .req-totals{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;padding-top:8px;border-top:1px dashed #e5e7eb;font-size:11px;color:#6b7280}
 .req-totals b{color:#111827}
+
+/* UX-2: panel de personas y asignaciones */
+.person-panel{margin-top:10px}
+.pp-search{width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:8px;background:#fff;margin:2px 0 8px}
+.pp-group h4{margin:8px 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#6b7280}
+.pp-item{display:block;width:100%;text-align:left;padding:6px 9px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;margin-bottom:4px}
+.pp-item:hover{border-color:#22c55e}
+.pp-item.sel{border-color:#1f8f2b;box-shadow:0 0 0 1px #1f8f2b inset;background:#f0fdf2}
+.pp-item b{display:block;font-size:12.5px;color:#111827}
+.pp-item small{display:block;font-size:11px;color:#6b7280;margin-top:2px}
+.pp-item .pp-main b{font-size:12.5px}
+.pp-item .pp-main small{font-size:11px}
+
+/* UX-2.5: item con acciones (eliminar persona), formularios y pestañas */
+.pp-item{display:flex;align-items:stretch;gap:4px;padding:0;border:1px solid #e5e7eb;border-radius:8px;background:#fff;margin-bottom:4px;overflow:hidden}
+.pp-item>.pp-main{flex:1;min-width:0;text-align:left;border:0;background:none;padding:6px 9px;cursor:pointer;border-radius:0}
+.pp-item>.pp-main:hover{background:#f0fdf2}
+.pp-item.sel{border-color:#1f8f2b;box-shadow:0 0 0 1px #1f8f2b inset;background:#f0fdf2}
+.pp-item .pp-del{border:0;background:none;padding:6px 8px;cursor:pointer;font-size:13px;border-radius:0}
+.pp-item .pp-del:hover{background:#fee2e2}
+.pp-toolbar{display:flex;gap:6px;margin:4px 0 8px}
+.pp-form{border:1px solid #d1d5db;border-radius:10px;padding:10px;background:#f8faf8;margin-bottom:8px;display:flex;flex-direction:column;gap:8px}
+.pp-form input{padding:9px;border:1px solid #d1d5db;border-radius:8px;background:#fff;width:100%}
+.pp-form-actions{display:flex;gap:6px}
+.side-tabs{display:flex;gap:4px;flex:1}
+.side-tab{flex:1;padding:9px 4px;font-size:12.5px;font-weight:600;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:8px;min-height:44px}
+.side-tab.active{background:#1f8f2b;color:#fff;border-color:#1f8f2b}
+.side-scroll{overflow-y:auto;min-height:0}
+.sidebar{display:flex;flex-direction:column;gap:0}
+.sidebar .side-scroll{flex:1}
+.marimba-panel .pp-item{display:block;width:100%;text-align:left}
+.marimba-panel .pp-item b{display:block;font-size:12.5px}
+.marimba-panel .pp-item small{display:block;font-size:11px;color:#6b7280;margin-top:2px}
+.marimba-panel .tpl-toggle{background:#f0fdf2;border-color:#bfe5c3;font-weight:600}
+.canvas-top-bar .zoom-controls button{min-height:34px}
+@media(max-width:1000px){.side-tab{min-height:44px}}

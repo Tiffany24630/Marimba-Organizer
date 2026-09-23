@@ -2,9 +2,10 @@ import unicodedata,re
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from app.db.session import get_db
 from app.models import Project,Person,Position,Song,SongAssignment,MarimbaTemplate,Composition
-from app.schemas.schemas import ProjectIn,CompositionIn,CompositionPatch,MarimbaTemplateIn,ImportConfirm,SongIn,SongPatch,CompositionDuplicateIn,ApplySuggestions
+from app.schemas.schemas import ProjectIn,CompositionIn,CompositionPatch,MarimbaTemplateIn,ImportConfirm,SongIn,SongPatch,CompositionDuplicateIn,ApplySuggestions,PersonIn,PersonPatch
 from app.services.excel_parser import parse_workbook,match_people,detect_duplicates
 from app.services.suggestions import suggest, get_suggestions_for_song
 from app.services.suggestions.distribution import get_distribution_for_song
@@ -146,6 +147,69 @@ def project(pid:int,db:Session=Depends(get_db)):
 @router.get('/people')
 def people(db:Session=Depends(get_db)): 
     return [obj(x) for x in db.scalars(select(Person).order_by(Person.name)).all()]
+
+@router.post('/people')
+def create_person(p:PersonIn,db:Session=Depends(get_db)):
+    name=p.name.strip()
+    if not name:
+        raise HTTPException(400,'El nombre de la persona no puede estar vacío.')
+    if db.scalar(select(Person).where(Person.name==name)):
+        raise HTTPException(409,f'Ya existe una persona llamada "{name}".')
+    x=Person(name=name)
+    db.add(x)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409,'Ya existe una persona con ese nombre.')
+    db.refresh(x)
+    return obj(x)
+
+@router.patch('/people/{pid}')
+def rename_person(pid:int,p:PersonPatch,db:Session=Depends(get_db)):
+    x=db.get(Person,pid)
+    if not x:
+        raise HTTPException(404,'Persona no encontrada')
+    name=p.name.strip()
+    if not name:
+        raise HTTPException(400,'El nombre de la persona no puede estar vacío.')
+    dup=db.scalar(select(Person).where(Person.name==name))
+    if dup and dup.id!=pid:
+        raise HTTPException(409,f'Ya existe otra persona llamada "{name}".')
+    x.name=name
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409,'Ya existe una persona con ese nombre.')
+    db.refresh(x)
+    return obj(x)
+
+@router.delete('/people/{pid}')
+def delete_person(pid:int,db:Session=Depends(get_db)):
+    x=db.get(Person,pid)
+    if not x:
+        raise HTTPException(404,'Persona no encontrada')
+    # Person is global. Never cascade a visual removal into song history.
+    if db.scalar(select(SongAssignment.id).where(SongAssignment.person_id==pid).limit(1)) is not None:
+        raise HTTPException(409,'La persona participa en canciones. Ret?rala de la composici?n sin borrar el cat?logo.')
+    for composition in db.scalars(select(Composition)).all():
+        data=composition.data if isinstance(composition.data,dict) else {}
+        for element in data.get('elements',[]) or []:
+            if not isinstance(element,dict):
+                continue
+            referenced=element.get('type')=='person' and str(element.get('personId'))==str(pid)
+            referenced=referenced or any(isinstance(slot,dict) and str(slot.get('personId'))==str(pid)
+                                        for slot in element.get('positions',[]) or [])
+            if referenced:
+                raise HTTPException(409,'La persona est? referenciada en composiciones guardadas.')
+    db.delete(x)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409,'La persona tiene referencias y no puede eliminarse.')
+    return {'deleted':True,'id':pid,'assignments_removed':0}
 
 @router.get('/positions')
 def positions(db:Session=Depends(get_db)): 

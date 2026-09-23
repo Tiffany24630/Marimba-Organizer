@@ -3,7 +3,8 @@ import {useEffect,useLayoutEffect,useRef,useState,useCallback} from 'react';
 import type Konva from 'konva';
 import {useComposition} from '../store/composition';
 import type {MarimbaElement,PersonElement} from '../types';
-import {elementBBox,slotRect} from '../lib/layout';
+import {elementBBox,hitTestSlot,slotRect} from '../lib/layout';
+import {useConfirm} from '../hooks/useConfirm';
 
 function MarimbaNode({m,selected}:{m:MarimbaElement;selected:boolean}){
  const marimbaDragged=useComposition(s=>s.marimbaDragged);
@@ -42,7 +43,9 @@ function PersonNode({e,selected}:{e:PersonElement;selected:boolean}){
  const select=useComposition(s=>s.select);
  const update=useComposition(s=>s.update);
  const dropPerson=useComposition(s=>s.dropPerson);
+ const assign=useComposition(s=>s.assign);
  const recordHistory=useComposition(s=>s.recordHistory);
+ const confirm=useConfirm();
 
  const m=e.marimbaId?elements.find((x):x is MarimbaElement=>x.id===e.marimbaId&&x.type==='marimba'):undefined;
  const idx=m?m.positions.findIndex(p=>p.id===e.marimbaPositionId):-1;
@@ -61,18 +64,48 @@ function PersonNode({e,selected}:{e:PersonElement;selected:boolean}){
    onTap={ev=>{ev.cancelBubble=true;select(e.id);}}
    onDragStart={()=>recordHistory()}
    onDragEnd={ev=>{
-    const node=ev.target;
-    const stage=node.getStage();
-    let pointer: {x:number;y:number}|null=null;
-    if(stage){
-     const transform=stage.getAbsoluteTransform().copy().invert();
-     const raw=stage.getPointerPosition();
-     if(raw) pointer=transform.point(raw);
-    }
-    const fallback=assigned&&r?{x:node.x()-pw/2,y:node.y()-ph/2,rotation:0}:{x:node.x(),y:node.y(),rotation:node.rotation()};
-    dropPerson(e.id,pointer,fallback);
-   }}
-   onTransformStart={()=>recordHistory()}
+     const node=ev.target;
+     const stage=node.getStage();
+     let pointer: {x:number;y:number}|null=null;
+     if(stage){
+      const transform=stage.getAbsoluteTransform().copy().invert();
+      const raw=stage.getPointerPosition();
+      if(raw) pointer=transform.point(raw);
+     }
+     const fallback=assigned&&r?{x:node.x()-pw/2,y:node.y()-ph/2,rotation:0}:{x:node.x(),y:node.y(),rotation:node.rotation()};
+     const snapBack=()=>{
+      if(assigned){node.x(e.x);node.y(e.y);node.rotation(m?m.rotation:0);}
+      else{node.x(e.x);node.y(e.y);node.rotation(e.rotation);}
+      node.getLayer()?.batchDraw();
+     };
+     const target=pointer?hitTestSlot(elements,pointer):null;
+     if(!target){dropPerson(e.id,null,fallback);return;}
+     const tm=target.marimba;
+     const tslot=tm.positions[target.index];
+     if(tm.locked){snapBack();return;}
+     if(tm.id===e.marimbaId&&tslot.id===e.marimbaPositionId){snapBack();return;}
+     const selfOccupies=tslot.personId===e.personId;
+     const occupant=selfOccupies?null:(tslot.personId!=null?elements.find((x):x is PersonElement=>x.type==='person'&&x.personId===tslot.personId):null);
+     const dest=`${tm.name} · p${target.index} (${tslot.type})`;
+     void (async()=>{
+      if(occupant){
+       const ok=await confirm.show({title:'Puesto ocupado',
+        message:`${dest} está ocupado por ${occupant.name}. ¿Reemplazarlo? ${occupant.name} quedará sin asignar (no se elimina).`,
+        okLabel:'Reemplazar'});
+       if(!ok){snapBack();return;}
+      }else if(!selfOccupies&&e.marimbaId){
+       const om=elements.find((x):x is MarimbaElement=>x.id===e.marimbaId&&x.type==='marimba');
+       const oi=om?om.positions.findIndex(pp=>pp.id===e.marimbaPositionId):-1;
+       const from=om&&oi>=0?`${om.name} · p${oi} (${om.positions[oi].type})`:'otro puesto';
+       const ok=await confirm.show({title:'Mover persona',
+        message:`${e.name} ya está asignada a ${from}. ¿Moverla a ${dest}?`,
+        okLabel:'Mover'});
+       if(!ok){snapBack();return;}
+      }
+      assign(e.id,tm.id,tslot.id);
+     })();
+    }}
+       onTransformStart={()=>recordHistory()}
    onTransformEnd={ev=>{const n=ev.target;update(e.id,{x:n.x(),y:n.y(),rotation:n.rotation(),scaleX:n.scaleX(),scaleY:n.scaleY()});}}>
    <Rect width={pw} height={ph} fill="#ffffff"
     stroke={selected?'#22c55e':'#111827'} strokeWidth={selected?3:1}
@@ -116,6 +149,36 @@ export default function CanvasEditor(){
 
  const selEl=elements.find(e=>e.id===selectedId);
  const isLocked=Boolean(selEl?.locked);
+ const focusId=useComposition(s=>s.focusId);
+ const clearFocus=useComposition(s=>s.clearFocus);
+
+ useEffect(()=>{
+  if(!focusId)return;
+  const el=elements.find(x=>x.id===focusId);
+  clearFocus();
+  if(!el)return;
+  const st=stageRef.current;if(!st)return;
+  const m=el.type==='person'&&el.marimbaId?elements.find((x):x is MarimbaElement=>x.id===el.marimbaId&&x.type==='marimba'):undefined;
+  const b=elementBBox(el,m);
+  setStagePos({x:size.w/2-(b.x+b.width/2)*zoom,y:size.h/2-(b.y+b.height/2)*zoom});
+ },[focusId]);
+
+ const handleFit=()=>{
+  const st=stageRef.current;if(!st||!elements.length)return;
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  const marimbas=elements.filter((x):x is MarimbaElement=>x.type==='marimba');
+  for(const e of elements){
+   const m=e.type==='person'&&e.marimbaId?marimbas.find(x=>x.id===e.marimbaId):undefined;
+   const b=elementBBox(e,m);
+   minX=Math.min(minX,b.x);minY=Math.min(minY,b.y);
+   maxX=Math.max(maxX,b.x+b.width);maxY=Math.max(maxY,b.y+b.height);
+  }
+  const pad=60;
+  const w=maxX-minX+pad*2,h=maxY-minY+pad*2;
+  const z=clampZoom(Math.min(size.w/w,size.h/h));
+  setZoom(z);
+  setStagePos({x:size.w/2-(minX+maxX)/2*z,y:size.h/2-(minY+maxY)/2*z});
+ };
 
  useEffect(()=>{
   const tr=trRef.current;
@@ -330,6 +393,7 @@ export default function CanvasEditor(){
      <span className="zoom-label">{Math.round(zoom*100)}%</span>
      <button onClick={handleZoomIn} title="Acercar (Zoom +)">＋</button>
      <button onClick={handleResetZoom} title="Restablecer zoom a 100%">↺ 100%</button>
+     <button onClick={handleFit} title="Ajustar a pantalla (ver toda la composición)">⛶ Ajustar</button>
      <button onClick={handleCenter} title="Centrar composición">⛶ Centrar</button>
     </div>
     <button className="export" onClick={exportPNG} disabled={!elements.length}>Exportar PNG</button>

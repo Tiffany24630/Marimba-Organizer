@@ -37,6 +37,19 @@ export function nearestSlot(m:MarimbaElement,local:{x:number,y:number}):number{
  return best;
 }
 
+export function hitTestSlot(els:Element[],p:{x:number,y:number}):{marimba:MarimbaElement,index:number}|null{
+ const marimbas=els.filter((e):e is MarimbaElement=>e.type==='marimba');
+ for(let i=marimbas.length-1;i>=0;i--){
+  const m=marimbas[i];
+  if(!m.positions.length)continue;
+  const l=worldToLocal(m,p.x,p.y);
+  if(l.x<0||l.x>m.width||l.y<0||l.y>m.height)continue;
+  const idx=nearestSlot(m,l);
+  if(idx>=0)return {marimba:m,index:idx};
+ }
+ return null;
+}
+
 export function elementBBox(e:Element, marimba?:MarimbaElement){
  let w=e.width*(e.scaleX||1), h=e.height*(e.scaleY||1);
  let ox=0, oy=0, rot=e.rotation||0;

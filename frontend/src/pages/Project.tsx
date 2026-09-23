@@ -6,6 +6,8 @@ import Inspector from '../components/Inspector';
 import SuggestionsPanel from '../components/SuggestionsPanel';
 import DistributionPanel from '../components/DistributionPanel';
 import RequirementsPanel from '../components/RequirementsPanel';
+import PersonPanel from '../components/PersonPanel';
+import MarimbaPanel from '../components/MarimbaPanel';
 import type {Song,Template} from '../types';
 
 type SongRow={
@@ -41,6 +43,7 @@ export default function Project({id,onBack}:{id:number;onBack:()=>void}){
  const [sidebarW,setSidebarW]=useState(280);
  const [isResizing,setIsResizing]=useState(false);
  const [showInspector,setShowInspector]=useState(false);
+ const [sideTab,setSideTab]=useState<'personas'|'marimbas'|'paneles'>('personas');
 
  const {
   elements,
@@ -479,58 +482,67 @@ export default function Project({id,onBack}:{id:number;onBack:()=>void}){
     </div>
    </header>
 
-   <div className="workspace">
+   <div className="workspace" style={{gridTemplateColumns:`${sidebarW}px 6px minmax(0,1fr)`}}>
     <aside className="sidebar" style={{width:sidebarW,maxWidth:sidebarW,minWidth:0}}>
      <div className="sidebar-head">
-      <h3>Distribución</h3>
+      <div className="side-tabs" role="tablist">
+       {(['personas','marimbas','paneles'] as const).map(t=>(
+        <button key={t} role="tab" aria-selected={sideTab===t}
+         className={`side-tab ${sideTab===t?'active':''}`}
+         onClick={()=>setSideTab(t)}>{t==='personas'?'Personas':t==='marimbas'?'Marimbas':'Paneles'}</button>
+       ))}
+      </div>
       <button className="icon toggle-btn" id="toggle-inspector" aria-label="Abrir inspector" title="Abrir inspector"
        onClick={()=>setShowInspector(v=>!v)}>🔍</button>
      </div>
-     <p className="hint canvas-hint">Arrastra sobre el lienzo para moverlo; rueda o pellizca para hacer zoom.</p>
-     <h3>Personas de la pieza</h3>
-     {(song?.assignments||[]).length===0&&<p className="hint">Sin personas en esta canción.</p>}
-     {(song?.assignments||[]).map((a:any)=>{
-      const onCanvas=placedPersonIds.has(a.person_id);
-      return (
-       <button className="item" key={a.id} onClick={()=>{if(!onCanvas)addPerson({id:a.person_id,name:a.person,position:a.position});}}>
-        <b>{onCanvas?'✓ ':''}{a.person}</b><small>{a.position}</small>
-       </button>);
-     })}
-
-     <h3>Puestos detectados</h3>
-     {detected.length>0
-      ?<div className="chips">{detected.map(p=><span className="chip" key={p}>{p}</span>)}</div>
-      :<p className="hint">Sin puestos en esta canción.</p>}
-
-     {openSongId!=null&&(
-      <RequirementsPanel songId={openSongId} compositionId={compId} refreshKey={compUpdatedAt} dirty={isDirty}/>
+     {sideTab==='personas'&&(
+      <div className="side-scroll">
+       <h3>Personas de la pieza</h3>
+       {(song?.assignments||[]).length===0&&<p className="hint">Sin personas en esta canción.</p>}
+       {(song?.assignments||[]).map((a:any)=>{
+        const onCanvas=placedPersonIds.has(a.person_id);
+        return (
+         <button className="item" key={a.id} onClick={()=>{if(!onCanvas)addPerson({id:a.person_id,name:a.person,position:a.position});}}>
+          <b>{onCanvas?'✓ ':''}{a.person}</b><small>{a.position}</small>
+         </button>);
+       })}
+       <PersonPanel/>
+      </div>
      )}
-
-     {openSongId!=null&&songRow&&(
-      <DistributionPanel songId={openSongId} songName={songRow.name}
-       onApplied={(comp:any)=>{
-        setData((d:any)=>d?{...d,compositions:[...(d?.compositions||[]),comp]}:d);
-        setCompId(comp.id);setCompName(comp.name||'');setElements(comp.data?.elements||[]);select(null);reloadSongs(id);
-       }} />
+     {sideTab==='marimbas'&&(
+      <div className="side-scroll">
+       <MarimbaPanel onAddTemplate={(name,positions)=>addMarimba({name,positions})}/>
+       <button className="item custom" onClick={()=>addCustomMarimba()}>
+        <b>+ Marimba personalizada</b><small>Empieza con un puesto y configúrala en el inspector</small>
+       </button>
+       <p className="hint">Las plantillas son solo punto de partida: luego puedes agregar, quitar, cambiar o reordenar puestos sin afectar la plantilla.</p>
+      </div>
      )}
-
-     {openSongId!=null&&songRow&&(
-      <SuggestionsPanel songId={openSongId} songName={songRow.name}
-       onApplied={(comp:any)=>{
-        setData((d:any)=>d?{...d,compositions:[...(d?.compositions||[]),comp]}:d);
-        setCompId(comp.id);setCompName(comp.name||'');setElements(comp.data?.elements||[]);select(null);reloadSongs(id);
-       }}/>
+     {sideTab==='paneles'&&(
+      <div className="side-scroll">
+       <h3>Puestos detectados</h3>
+       {detected.length>0
+        ?<div className="chips">{detected.map(p=><span className="chip" key={p}>{p}</span>)}</div>
+        :<p className="hint">Sin puestos en esta canción.</p>}
+       {openSongId!=null&&(
+        <RequirementsPanel songId={openSongId} compositionId={compId} refreshKey={compUpdatedAt} dirty={isDirty}/>
+       )}
+       {openSongId!=null&&songRow&&(
+        <DistributionPanel songId={openSongId} songName={songRow.name}
+         onApplied={(comp:any)=>{
+          setData((d:any)=>d?{...d,compositions:[...(d?.compositions||[]),comp]}:d);
+          setCompId(comp.id);setCompName(comp.name||'');setElements(comp.data?.elements||[]);select(null);reloadSongs(id);
+         }} />
+       )}
+       {openSongId!=null&&songRow&&(
+        <SuggestionsPanel songId={openSongId} songName={songRow.name}
+         onApplied={(comp:any)=>{
+          setData((d:any)=>d?{...d,compositions:[...(d?.compositions||[]),comp]}:d);
+          setCompId(comp.id);setCompName(comp.name||'');setElements(comp.data?.elements||[]);select(null);reloadSongs(id);
+         }}/>
+       )}
+      </div>
      )}
-
-     <h3>Marimbas</h3>
-     {templates.map((t:Template)=>(
-      <button className="item" key={t.id} onClick={()=>addMarimba({name:t.name,positions:t.positions})}>
-       <b>+ {t.name}</b><small>{t.positions.length} puestos · {t.positions.join(', ')}</small>
-      </button>))}
-     <button className="item custom" onClick={()=>addCustomMarimba()}>
-      <b>+ Marimba personalizada</b><small>Empieza con un puesto y configúrala en el panel derecho</small>
-     </button>
-     <p className="hint">Las plantillas son solo punto de partida: luego puedes agregar, quitar, cambiar o reordenar puestos sin afectar la plantilla.</p>
     </aside>
     <div className={`splitter ${isResizing?'dragging':''}`} onMouseDown={()=>setIsResizing(true)} onTouchStart={()=>setIsResizing(true)} aria-hidden="true"></div>
     <section className="canvas-panel"><CanvasEditor/></section>
