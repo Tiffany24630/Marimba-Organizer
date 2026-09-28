@@ -1,4 +1,5 @@
 """Motor de distribucion parte 1: slots reales + mapa previo + explicaciones."""
+from sqlalchemy import select
 from app.services.suggestions.history import parse_composition_marimba_info  # noqa
 
 def get_previous_song(song, db):
@@ -55,8 +56,9 @@ def slots_from_composition(comp):
                 and e.get('personId') is not None and e.get('marimbaPositionId')):
             occ[e['marimbaPositionId']] = e['personId']
 
-    return [{'marimba_name': names.get(m, m), 'slot_id': s, 'position_type': t,
-             'slot_index': i, 'occupied_by': occ.get(s)} for (m, s, t, i) in defs]
+    return [{'marimba_id': m, 'marimba_name': names.get(m, m), 'slot_id': s,
+             'position_type': t, 'slot_index': i, 'occupied_by': occ.get(s)}
+            for (m, s, t, i) in defs]
 
 def get_real_slots(previous_song, db):
     if previous_song is None:
@@ -86,6 +88,86 @@ def get_previous_assignment_map(previous_song, db):
                              'slot_index': slot.get('slot_index')}
         
     return info
+
+def get_default_templates(db):
+    """Plantillas globales disponibles como punto de partida para una propuesta."""
+    from app.models import MarimbaTemplate
+    return db.scalars(select(MarimbaTemplate).order_by(MarimbaTemplate.id)).all()
+
+def build_template_slots(templates, requirements, max_per_template=8):
+    """
+    Construye puestos REALES a partir de las plantillas globales.
+
+    Devuelve la misma estructura que `slots_from_composition`
+    ({marimba_id, marimba_name, slot_id, position_type, slot_index, occupied_by})
+    para que ambos caminos (composicion previa o plantillas) sean intercambiables.
+
+    Se agregan instancias de plantilla hasta cubrir `requirements`. NO se crean
+    marimbas inventadas: lo que las plantillas no cubren queda como faltante, de
+    modo que los puestos siempre respetan los tipos de la plantilla original.
+    """
+    need = {k: int(v) for k, v in (requirements or {}).items() if int(v) > 0}
+    if not need:
+        return []
+    cap = {}
+    slots = []
+    instances = {}
+    specs = []
+    for t in templates or []:
+        pos = [str(p).strip() for p in (t.positions or []) if str(p).strip()]
+        if pos:
+            specs.append([t, pos, True])
+    while True:
+        best, best_gain = None, 0
+        for t, pos, usable in specs:
+            if not usable:
+                continue
+            local, gain = {}, 0
+            for p in pos:
+                local[p] = local.get(p, 0) + 1
+                if cap.get(p, 0) + local[p] <= need.get(p, 0):
+                    gain += 1
+            if gain > best_gain:
+                best, best_gain = (t, pos), gain
+        if best is None or best_gain == 0:
+            break
+        t, pos = best
+        idx = instances.get(t.id, 0) + 1
+        if idx > max_per_template:
+            for spec in specs:
+                if spec[0].id == t.id:
+                    spec[2] = False
+            continue
+        instances[t.id] = idx
+        instance_id = 'tpl%d_%d' % (t.id, idx)
+        name = t.name if idx == 1 else '%s %d' % (t.name, idx)
+        for i, p in enumerate(pos):
+            cap[p] = cap.get(p, 0) + 1
+            slots.append({'marimba_id': instance_id,
+                          'marimba_name': name,
+                          'slot_id': '%s_%d' % (instance_id, i),
+                          'position_type': p, 'slot_index': i,
+                          'occupied_by': None})
+    # UX-4: NO se inventan marimbas. Si las plantillas no cubren una posicion,
+    # esa persona queda sin asignar y se reporta como faltante. Agregar una marimba
+    # "de relleno" comprimia los puestos hasta hacer el texto ilegible.
+    return slots
+
+def resolve_slots(song, db, requirements=None):
+    """
+    Fuente unica de puestos para proponer una distribucion.
+
+    Prioridad:
+      1. Puestos reales de la composicion de la cancion anterior (continuidad real).
+      2. Si no hay ninguno, se arman a partir de las plantillas globales.
+
+    Devuelve (slots, source) con source in ('composition','templates').
+    """
+    reqs = requirements or {}
+    slots = get_real_slots(get_previous_song(song, db), db)
+    if slots:
+        return slots, 'composition'
+    return build_template_slots(get_default_templates(db), reqs), 'templates'
 
 def _explain(same_pos, same_mar, same_slot, pos_chg, mar_chg, slot_chg, no_hist):
     if no_hist:

@@ -2,7 +2,8 @@
 import uuid
 from fastapi import HTTPException
 from app.models import Song, Person, Composition
-from app.services.suggestions.engine_a import get_previous_song, get_real_slots
+from app.services.suggestions.engine_a import resolve_slots
+from app.services.suggestions.requirements import get_song_requirements
 
 def create_distribution_composition(song_id, distribution_assignments, name, db, slots=None):
     song = db.get(Song, song_id)
@@ -10,34 +11,61 @@ def create_distribution_composition(song_id, distribution_assignments, name, db,
     if not song:
         raise HTTPException(404, 'La cancion %d no existe.' % song_id)
     
+    # Una persona solo puede ocupar un puesto. Si llega repetida (varias
+    # asignaciones musicales para la misma cancion) se queda con la primera:
+    # duplicarla genera ids de elemento repetidos y deja el lienzo inconsistente.
+    unique_assignments = []
+    seen_persons = set()
     for a in (distribution_assignments or []):
         pid = a.get('person_id')
-
-        if pid is not None and not db.get(Person, pid):
-            raise HTTPException(404, 'La persona %s no existe.' % pid)
-        
+        if pid is not None and pid in seen_persons:
+            continue
+        if pid is not None:
+            if not db.get(Person, pid):
+                raise HTTPException(404, 'La persona %s no existe.' % pid)
+            seen_persons.add(pid)
+        unique_assignments.append(a)
+    distribution_assignments = unique_assignments
     if slots is None:
-        slots = get_real_slots(get_previous_song(song, db), db)
+        reqs = get_song_requirements(song_id, db)
+        slots, _source = resolve_slots(song, db, reqs)
 
     by_id = {s['slot_id']: s for s in slots}
+    # Agrupar por `marimba_id` (la instancia) y NO por nombre: dos instancias de
+    # la misma plantilla comparten nombre y agruparlas por nombre las fusionaba en
+    # una marimba con el doble de puestos (p.ej. un "tenor" de 3 con otro de 3).
     by_marimba = {}
 
     for s in slots:
-        by_marimba.setdefault(s['marimba_name'], []).append(s)
-        
+        key = s.get('marimba_id') or s['marimba_name']
+        by_marimba.setdefault(key, []).append(s)
+
+    names = {}
+    for s in slots:
+        names[s.get('marimba_id') or s['marimba_name']] = s['marimba_name']
+
     for m in by_marimba:
         by_marimba[m].sort(key=lambda s: (s['slot_index'], s['slot_id']))
 
-    assigned = {a.get('marimba_position_id'): a for a in (distribution_assignments or [])
-                if a.get('marimba_position_id')}
+    # Un puesto fisico aloja a una sola persona. Si dos propuestas apuntan al
+    # mismo puesto se conserva la primera y la otra persona queda sin asignar,
+    # en lugar de sobrescribirla en silencio.
+    assigned = {}
+    for a in (distribution_assignments or []):
+        sid = a.get('marimba_position_id')
+        if sid and sid not in assigned:
+            assigned[sid] = a
     
     W, H, PAD, GAP, SY, SH = 380, 150, 14, 10, 56, 54
+    from app.services.suggestions.distributor import marimba_width
     elements = []
 
-    for mi, (mname, mslots) in enumerate(sorted(by_marimba.items())):
+    for mi, (mkey, mslots) in enumerate(sorted(by_marimba.items())):
+        mname = names.get(mkey, mkey)
         mid = 'marimba_%s' % uuid.uuid4().hex[:8]
         mx, my = 200 + (mi % 2) * 450, 200 + (mi // 2) * 250
         n = max(len(mslots), 1)
+        W = marimba_width(len(mslots))
         sw = (W - 2 * PAD - GAP * (n - 1)) / n
         positions = []
 

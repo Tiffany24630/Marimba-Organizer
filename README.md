@@ -1,6 +1,29 @@
-# Marimba Organizer
+# Acomodo · Organizador de marimba
 
-Aplicación web para importar el Excel real de distribución de puestos, seleccionar músicos y construir composiciones visuales editables para marimba.
+Aplicación web para organizar músicos y puestos de marimba: importa el Excel que
+ya usan, o arma el proyecto desde cero, y construye composiciones visuales
+editables.
+
+## Formas de empezar un proyecto
+
+En la pantalla principal hay dos caminos:
+
+1. **Nuevo proyecto en blanco** — botón `＋ Nuevo proyecto`. Crea un trabajo vacío
+   sin Excel y sin plantilla. Dentro se pueden agregar canciones, personas y
+   marimbas manualmente, o importar un Excel más adelante.
+2. **Importar Excel** — analiza `examples/Puestos conciertos Marimba.xlsx` (o el
+   propio) y genera el proyecto con sus canciones y participaciones.
+3. **Agregar más piezas después** — dentro de un proyecto, el bloque colapsable
+   **“Agregar más piezas con un Excel”** suma las canciones de otro archivo. Las
+   piezas nuevas se agregan al final y **las que ya están no se modifican**.
+
+### Sobre las piezas repetidas
+
+Si el Excel trae una pieza cuyo nombre ya existe en el proyecto, esta **se agrega
+igual** como pieza adicional y la interfaz avisa antes y después de confirmar
+(para que el usuario decida si renombra o quita la fila). Solo se descartan las
+repeticiones **dentro del mismo archivo**, porque ahí sí es un error del archivo.
+
 
 ## Ejecutar en VS Code sin Docker
 
@@ -60,25 +83,49 @@ Una plantilla (`Marimba tenor`, `Marimba grande`, `Marimbito`) solo sirve como p
 
 ## Motor de distribución (propone, el usuario decide)
 
-Separa explícitamente **posición musical** (Primera, Segunda, Bajo…) de **posición física** (Marimba A → p0, p1, p2…). Nunca asume cuántos puestos tiene una marimba: lee la configuración real de cada instancia desde la composición de la canción anterior.
+Separa explícitamente **puesto musical** (Primera, Segunda, Bajo…) de **puesto
+físico** (marimba → posición 0, 1, 2…). Reglas vigentes:
+
+- Solo se crean marimbas a partir de las **plantillas** registradas.
+- Cada persona se ubica **exclusivamente** en un puesto cuyo tipo coincide con su
+  puesto musical: si la plantilla dice "Centro", la persona va a un "Centro".
+- Cada instancia conserva la forma de su plantilla (un "tenor" de 3 puestos
+  nunca aparece con 6, aunque se necesiten dos tenores: son dos instancias).
+- Si las plantillas no cubren un puesto musical, la persona se reporta como
+  `unplaced` en lugar de ocupar un puesto ajeno.
 
 Servicio: `backend/app/services/suggestions/`
 
-- `engine_a.py`: lectura de slots físicos reales y mapa de asignaciones anteriores.
+- `engine_a.py`: lectura de slots físicos reales y construcción de slots desde plantillas.
 - `engine_b.py`: selección determinista (slots y candidatos).
-- `engine_c.py`: orquestador por canción.
+- `engine_c.py`: orquestador por canción (`distribution-suggestion`).
 - `engine_d.py`: bucle principal `propose_distribution`.
 - `engine_e.py`: `create_distribution_composition` (crea composición al aplicar).
 - `distribution.py`: fachada que reexporta todo.
-- `history.py`, `requirements.py`, `distributor.py`, `movement.py`: flujo previo de historial/sugerencias por continuidad de marimba.
-
-Orden determinista (sin solver, sin scores, sin ranking): conservar persona + posición + marimba + slot → persona + posición + marimba → persona + posición → historial compatible → sin historial → resto → reportar faltantes.
+- `distributor.py`: flujo de sugerencias por plantillas y creación de composición.
+- `history.py`, `requirements.py`, `movement.py`: historial, requerimientos y cambios.
 
 Endpoints:
 
 - `GET /api/songs/{song_id}/distribution-suggestion` → propuesta, faltantes, avisos y razones.
-- `POST /api/songs/{song_id}/distribution/apply` → crea una composición nueva (la canción anterior queda intacta).
-- `GET /api/songs/{song_id}/history` y `GET /api/songs/{song_id}/requirements` → historial y requerimientos por canción.
-- `GET /api/songs/{song_id}/suggestions` y `POST /api/songs/{song_id}/suggestions/apply` → flujo previo de sugerencias de continuidad de marimba.
+- `POST /api/songs/{song_id}/distribution/apply` → crea una composición nueva (la anterior queda intacta).
+- `GET /api/songs/{song_id}/suggestions` y `POST /api/songs/{song_id}/suggestions/apply` → sugerencias por plantillas.
+- `GET/POST/PATCH/DELETE /api/marimba-templates` → gestión de plantillas.
 
-Frontend: `frontend/src/components/DistributionPanel.tsx` (sección "Distribución propuesta" con confirmación explícita, nunca aplica solo) y `SuggestionsPanel.tsx` (continuidad).
+Frontend: `DistributionPanel.tsx` y `SuggestionsPanel.tsx` (ambos piden confirmación
+explícita; nunca aplican solos).
+
+## Pruebas
+
+```bash
+# Backend (SQLite temporal, se regenera solo)
+cd backend && python -m pytest tests -q
+
+# Frontend
+cd frontend && npx tsc -b --force
+cd frontend && node --test tests/composition.test.cjs tests/ux25.test.cjs
+
+# E2E contra la API en ejecución
+cd backend && python qa_e2e_final.py
+cd backend && python qa_requirements_e2e.py
+```

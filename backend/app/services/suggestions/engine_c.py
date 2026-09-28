@@ -1,5 +1,5 @@
 """Orquestador del motor para una cancion (parte 3)."""
-from app.services.suggestions.engine_a import get_previous_song, get_real_slots, get_previous_assignment_map
+from app.services.suggestions.engine_a import get_previous_song, resolve_slots, get_previous_assignment_map
 from app.services.suggestions.engine_d import propose_distribution
 from app.models import Song
 from fastapi import HTTPException
@@ -20,7 +20,9 @@ def get_distribution_for_song(song_id, db):
         [{'person_id': a.person_id, 'name': a.person.name} for a in song.assignments],
         key=lambda p: (p['name'], p['person_id']))
     prev = get_previous_song(song, db)
-    slots = get_real_slots(prev, db)
+    # Puestos reales de la composicion previa; si no hay ninguno, se arman con las
+    # plantillas globales para que la propuesta nunca quede sin marimbas.
+    slots, slot_source = resolve_slots(song, db, reqs)
     pmap = get_previous_assignment_map(prev, db)
     hist = get_person_history(song.project.id, db, exclude_song_id=song_id)
     hmap = {h['person_id']: h for h in hist}
@@ -32,5 +34,6 @@ def get_distribution_for_song(song_id, db):
 
     return {'song_id': song_id, 'song_name': song.name,
             'previous_song': prev.name if prev else None,
-            'marimbas_available': sorted({s['marimba_name'] for s in slots}),
+            'slot_source': slot_source,
+            'marimbas_available': sorted({s.get('marimba_id') or s['marimba_name'] for s in slots}),
             'capacity': dict(sorted(cap.items())), **res}
