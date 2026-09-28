@@ -22,22 +22,41 @@ export default function MarimbaPanel({onAddTemplate}:{onAddTemplate:(name:string
       <div key={m.id} className={`mp-row ${selectedId===m.id?'sel':''} ${m.locked?'locked':''}`}>
        <button className="pp-main" onClick={()=>focus(m.id)}
         title="Clic para seleccionarla y centrar la vista en ella">
-        <b>{m.locked?'🔒 ':''}{m.name}</b>
+        <b>{m.locked?'\u{1F512} ':''}{m.name}</b>
         <small>{m.positions.length} puestos · {occ} ocupados</small>
        </button>
        <button className="pp-act lock" title={m.locked?`${m.name} está bloqueada: clic para desbloquear`:`Bloquear ${m.name} (impide moverla, editar sus puestos y asignar)`}
-        onClick={()=>toggleLock(m.id)}>{m.locked?'🔒':'🔓'}</button>
+        onClick={()=>toggleLock(m.id)}>{m.locked?'\u{1F512}':'\u{1F513}'}</button>
       </div>
      );
     })}
     {marimbas.length>0&&(
      <div className="mp-slots">
-      {marimbas.flatMap(m=>m.positions.map((p,i)=>(
-       <button key={p.id}
-        className={`chip slot ${selectedSlot&&selectedSlot.marimbaId===m.id&&selectedSlot.positionId===p.id?'sel':''} ${p.personId!=null?'occ':''}`}
-        title={`${m.name} · puesto p${i} (${p.type})${p.personId!=null?' · ocupado':' · libre'} — toca para seleccionarlo`}
-        onClick={()=>selectSlot({marimbaId:m.id,positionId:p.id})}>{p.type}</button>
-      )))}
+      {marimbas.map(m=>{
+       // UX-4: UN boton por tipo de puesto, con la cantidad. Antes se generaba
+       // un chip por puesto y con muchas marimbas se desbordaban y se trababan.
+       const byType:Record<string,{total:number;free:number;ids:string[];first:number}>= {};
+       m.positions.forEach((p,i)=>{
+        const t=byType[p.type]||(byType[p.type]={total:0,free:0,ids:[],first:i});
+        t.total+=1;
+        if(p.personId==null)t.free+=1;
+        t.ids.push(p.id);
+       });
+       return (
+        <div className="mp-group" key={m.id}>
+         <span className="mp-group-name">{m.locked?'\u{1F512} ':''}{m.name}</span>
+         <div className="chips">
+          {Object.keys(byType).map(t=>(
+           <button key={t} className={`chip slot ${byType[t].free===0?'full':''}`}
+            title={`${m.name}: ${byType[t].total} puesto(s) "${t}" · ${byType[t].free} libre(s) — toca para seleccionar el primero`}
+            onClick={()=>selectSlot({marimbaId:m.id,positionId:byType[t].ids[0]})}>
+            {t} <b>×{byType[t].total}</b>
+           </button>
+          ))}
+         </div>
+        </div>
+       );
+      })}
      </div>
     )}
     {marimbas.length>0&&<p className="hint">Toca un puesto para seleccionarlo y ver sus propiedades en el inspector. 🔓/🔒 bloquea la marimba completa.</p>}

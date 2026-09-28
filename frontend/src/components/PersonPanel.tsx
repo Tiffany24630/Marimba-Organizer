@@ -43,7 +43,7 @@ export default function PersonPanel({projectId,onDeleted}:{projectId?:number;onD
   setBusy(true);
   try{
    // GLOBAL write first: the catalog row exists before the composition shows it.
-   const created=await api.createPerson(n);
+   const created=await api.createPerson(n,projectId??undefined);
    createPersonElement({personId:created.id,name:created.name,positionType:nPos.trim()||'Primera'});
    setNName('');setAdding(false);
   }catch(e:any){alert(e.message||'No se pudo crear la persona');}

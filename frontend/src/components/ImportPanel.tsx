@@ -16,13 +16,17 @@ type Preview={
 
 const DEFAULT_POSITIONS=['Primera','Segunda','Centro','Bajo','Tenor'];
 
-export default function ImportPanel({onDone,projects}:{onDone:(id?:number)=>void;projects?:{id:number,name:string}[]}){
+export default function ImportPanel({onDone,projects,projectId,existingSongNames}:{onDone:(id?:number)=>void;projects?:{id:number,name:string}[];projectId?:number;existingSongNames?:string[]}){
  const [file,setFile]=useState<File|null>(null);
  const [data,setData]=useState<Preview|null>(null);
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState<string|null>(null);
  const [name,setName]=useState('Nuevo concierto');
- const [targetProject,setTargetProject]=useState<number|null>(null);
+ const [targetProject,setTargetProject]=useState<number|null>(projectId??null);
+ // UX-5: al confirmar sobre un proyecto existente las canciones se SUMAN.
+ // Este panel se reutiliza dentro del proyecto para importar mas piezas.
+ const intoExisting=projectId!=null;
+ const [result,setResult]=useState<{added:string[];duplicate:string[];ignored:string[]} |null>(null);
  // correcciones manuales: clave "hoja|canción|índice" → {person,position}
  const [fixes,setFixes]=useState<Record<string,{person?:string;position?:string}>>({});
 
@@ -44,6 +48,7 @@ export default function ImportPanel({onDone,projects}:{onDone:(id?:number)=>void
    const p:Preview=await api.preview(file);
    setData(p);
    setFixes({});
+   setResult(null);
    if(p.sheets.length===0||p.people.length===0)setError('El archivo no contiene filas válidas. Verifica canciones (fila 1), posiciones (fila 2) y personas con marcas (desde la fila 3).');
   }catch(e:any){
    let msg=e.message;
@@ -55,8 +60,11 @@ export default function ImportPanel({onDone,projects}:{onDone:(id?:number)=>void
 
  const keyOf=(sheet:string,song:string,i:number)=>`${sheet}|${song}|${i}`;
 
+ // Devuelve las hojas ya corregidas. Es defensiva: si no hay analisis todavia
+ // devuelve [] en lugar de reventar con `data!.sheets`.
  const buildPayload=()=>{
-  const sheets=data!.sheets.map(sh=>({
+  if(!data)return [];
+  const sheets=data.sheets.map(sh=>({
    name:sh.name,
    songs:sh.songs.map(sg=>({
     name:sg.name,
@@ -81,6 +89,10 @@ export default function ImportPanel({onDone,projects}:{onDone:(id?:number)=>void
     ?{project_id:targetProject,source_filename:data.source_filename,sheets}
     :{project_name:name.trim()||'Nuevo concierto',source_filename:data.source_filename,sheets};
    const res=await api.confirm(payload);
+   // UX-5: se informa que se AGREGARON y cuantas havia antes, para que quede
+   // claro que nada de lo que ya estaba se toco.
+   setResult({added:res.added_songs||[],duplicate:res.duplicate_songs||[],ignored:res.ignored_songs||[]});
+   setData(null);setFile(null);
    onDone(res.id);
   }catch(e:any){
    let msg=e.message;
@@ -91,18 +103,49 @@ export default function ImportPanel({onDone,projects}:{onDone:(id?:number)=>void
  const totalAssignments=data?.sheets.reduce((n,sh)=>n+sh.songs.reduce((m,sg)=>m+sg.assignments.length,0),0)||0;
  const warnings=data?.stats?.warnings||[];
  const dups=data?.duplicates;
+ // UX-5: piezas del Excel cuyo nombre ya existe en el proyecto. Se avisa ANTES de
+ // confirmar para que el usuario decida, en lugar de duplicar a ciegas.
+ const norm=(s:string)=>s.trim().normalize('NFKD').replace(/[^a-z0-9]/gi,'').toLowerCase();
+ const yaExisten=(existingSongNames||[]).length>0&&data
+  ?Array.from(new Set(data.sheets.flatMap(sh=>sh.songs.map(sg=>sg.name.trim()))
+    .filter(nm=>nm&&existingSongNames!.some(x=>norm(x)===norm(nm)))))
+  :[];
+ // Cantidad real de piezas que se van a sumar (lo que quedo tras las correcciones).
+ // BUG: antes se llamaba `buildPayload()` sin mirar `data`, y esa funcion hace
+ // `data!.sheets`. En un proyecto recien creado (sin Excel analizado) `data` es
+ // null, la expresion reventaba al renderizar y React dejaba la pantalla en
+ // blanco. Se calcula solo cuando hay analisis, y `buildPayload` es defensivo.
+ const countPiezas=intoExisting&&data
+  ?buildPayload().reduce((n,sh)=>n+sh.songs.length,0)
+  :0;
 
  return (
   <section className="card">
-   <h2>Importar Excel</h2>
-   <p>Formato esperado: canciones en la fila 1, puestos musicales en la fila 2 y personas con marcas desde la fila 3. Límite: 10 MB (.xlsx, .xlsm, .xls).</p>
-   <input type="file" accept=".xlsx,.xlsm,.xls" onChange={e=>{setFile(e.target.files?.[0]||null);setData(null);setError(null);}}/>
+   <h2>{intoExisting?'Agregar piezas con Excel':'Importar Excel'}</h2>
+   <p>{intoExisting
+    ?'Las canciones del archivo se SUMAN a las que ya tiene este proyecto. Nada de lo que ya está se modifica ni se elimina.'
+    :'Formato esperado: canciones en la fila 1, puestos musicales en la fila 2 y personas con marcas desde la fila 3. Límite: 10 MB (.xlsx, .xlsm, .xls).'}</p>
+   <input type="file" accept=".xlsx,.xlsm,.xls" onChange={e=>{setFile(e.target.files?.[0]||null);setData(null);setError(null);setResult(null);}}/>
    <button onClick={run} disabled={!file||busy}>{busy?'Procesando…':'Analizar'}</button>
    {error&&<p className="import-error">⚠ {error}</p>}
 
+   {result&&(
+    <div className="import-result">
+     <h3>Importación completada</h3>
+     <p>✓ Se agregaron {result.added.length} pieza(s) a este proyecto.</p>
+     {result.added.length>0&&<div className="chips">{result.added.map(s=><span className="chip" key={s}>{s}</span>)}</div>}
+     {result.duplicate.length>0&&(
+      <p className="hint warn">Estas piezas ya tenían una canción con el mismo nombre; se agregó una copia adicional: {result.duplicate.join(', ')}</p>
+     )}
+     {result.ignored.length>0&&(
+      <p className="hint warn">Repetidas dentro del mismo archivo (se conservó la primera): {result.ignored.join(', ')}</p>
+     )}
+    </div>
+   )}
+
    {data&&<div className="import-result">
-    <input value={name} onChange={e=>setName(e.target.value)} placeholder="Nombre del trabajo" disabled={targetProject!=null}/>
-    {projects&&projects.length>0&&(
+    {!intoExisting&&<input value={name} onChange={e=>setName(e.target.value)} placeholder="Nombre del trabajo" disabled={targetProject!=null}/>}
+    {!intoExisting&&projects&&projects.length>0&&(
      <label className="field">O importar en un proyecto existente
       <select value={targetProject??''} onChange={e=>setTargetProject(e.target.value?Number(e.target.value):null)}>
        <option value="">— crear proyecto nuevo —</option>
@@ -112,6 +155,17 @@ export default function ImportPanel({onDone,projects}:{onDone:(id?:number)=>void
 
     <p>✓ {data.sheets.length} hojas · {data.people.length} personas · {data.positions.length} posiciones · {totalAssignments} asignaciones · {data.stats?.valid_rows??0} filas válidas · {data.stats?.empty_rows??0} filas vacías</p>
     <p className="hint">Posiciones detectadas: {data.positions.length?data.positions.join(', '):'ninguna'} · Marcas: {data.marks.join(', ')||'—'}</p>
+
+    {yaExisten.length>0&&(
+     <div className="review-block warn">
+      <h3>{yaExisten.length} pieza(s) ya existen en este proyecto</h3>
+      <p className="hint">
+       {yaExisten.join(' · ')} — se agregarán como piezas ADICIONALES con el mismo
+       nombre; las que ya existen no se modifican. Si prefieres no duplicarlas,
+       quita esas filas del archivo o renómbralas antes de confirmar.
+      </p>
+     </div>
+    )}
 
     {dups&&dups.exact.length>0&&<div className="review-block warn"><h3>Posibles duplicados exactos</h3>
      <ul>{dups.exact.map((g,i)=><li key={i}>{g.join(' · ')}</li>)}</ul></div>}
@@ -149,7 +203,9 @@ export default function ImportPanel({onDone,projects}:{onDone:(id?:number)=>void
      <datalist id="import-positions">{Array.from(new Set([...DEFAULT_POSITIONS,...data.positions])).map(p=><option key={p} value={p}/>)}</datalist>
     </div>
 
-    <button className="primary" onClick={confirm} disabled={busy}>Confirmar importación</button>
+    <button className="primary" onClick={confirm} disabled={busy}>
+     {intoExisting?`Agregar ${countPiezas} pieza(s) a este proyecto`:'Confirmar importación'}
+    </button>
    </div>}
   </section>
  );

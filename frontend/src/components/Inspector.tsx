@@ -1,17 +1,18 @@
 import {useState} from 'react';
 import {useComposition,elementLocked} from '../store/composition';
 import type {MarimbaElement,PersonElement} from '../types';
-import {slotCenter,slotRect} from '../lib/layout';
-import {compatiblePosition} from '../store/composition';
+import {slotCenter,slotRect,PERSON_W,PERSON_H} from '../lib/layout';
+import {compatiblePosition,PERSON_MIN_SCALE,PERSON_MAX_SCALE} from '../store/composition';
 import {api} from '../lib/api';
 import {useConfirm} from '../hooks/useConfirm';
 
 const DEFAULT_TYPES=['Primera','Segunda','Centro','Bajo','Tenor','Timbal','Contra','Teclado','Marimba Doble Agudo'];
 
-export default function Inspector({detectedPositions,drawerOpen,onDrawerToggle}:{
+export default function Inspector({detectedPositions,drawerOpen,onDrawerToggle,width}:{
  detectedPositions:string[];
  drawerOpen?:boolean;
  onDrawerToggle?:(v:boolean)=>void;
+ width?:number;
 }){
  const elements=useComposition(s=>s.elements);
  const selectedId=useComposition(s=>s.selectedId);
@@ -31,7 +32,9 @@ export default function Inspector({detectedPositions,drawerOpen,onDrawerToggle}:
  const removePersonFromProject=useComposition(s=>s.removePersonFromProject);
  const addCustomMarimba=useComposition(s=>s.addCustomMarimba);
  const [newType,setNewType]=useState('Primera');
- const drawer=onDrawerToggle!==undefined; const inspectorCls=drawer?(`inspector drawer ${drawerOpen?'open':'closed'}`):'inspector';
+ const drawer=onDrawerToggle!==undefined;
+ const inspStyle=width?({width,maxWidth:width,minWidth:0} as React.CSSProperties):undefined;
+ const inspectorCls=drawer?(`inspector drawer ${drawerOpen?'open':'closed'}`):'inspector';
 
  const e=elements.find(x=>x.id===selectedId)||null;
 
@@ -60,7 +63,7 @@ export default function Inspector({detectedPositions,drawerOpen,onDrawerToggle}:
    const candidates=elements.filter((x):x is PersonElement=>x.type==='person'
     &&x.personId!==slot.personId&&compatiblePosition(x.positionType,slot.type));
    return (
-    <aside className={inspectorCls}>
+    <aside className={inspectorCls} style={inspStyle}>
      {datalist}
      <div className="inspector-header">
       <h3>Puesto seleccionado</h3>
@@ -103,7 +106,7 @@ if(e&&e.type==='marimba'){
   };
 
   return (
-   <aside className={inspectorCls}>
+   <aside className={inspectorCls} style={inspStyle}>
     <div className="inspector-header">
      <h3>Marimba seleccionada {isLocked?'🔒':''}</h3>
      <button className="drawer-close" aria-label="Cerrar inspector" title="Cerrar inspector" onClick={()=>onDrawerToggle?.(false)}>✕</button>
@@ -169,9 +172,10 @@ if(e&&e.type==='marimba'){
   const m=p.marimbaId?elements.find((x):x is MarimbaElement=>x.id===p.marimbaId&&x.type==='marimba'):undefined;
   const idx=m?m.positions.findIndex(x=>x.id===p.marimbaPositionId):-1;
   const pos=m&&idx>=0?m.positions[idx]:null;
+ const free=!m||idx<0;
 
   return (
-   <aside className={inspectorCls}>
+   <aside className={inspectorCls} style={inspStyle}>
     <div className="inspector-header">
      <h3>Persona seleccionada {isLocked?'🔒':''}</h3>
      <button className="drawer-close" aria-label="Cerrar inspector" title="Cerrar inspector" onClick={()=>onDrawerToggle?.(false)}>✕</button>
@@ -205,6 +209,11 @@ if(e&&e.type==='marimba'){
      <input list={listId} disabled={isLocked} value={p.positionType} onChange={ev=>setPersonPositionType(p.id,ev.target.value)}/>
     </label>
 
+    <button onClick={()=>update(p.id,{width:PERSON_W,height:PERSON_H,scaleX:1,scaleY:1})}
+     disabled={isLocked||!free} title="Devuelve el tamaño y la proporcion originales">
+     Restaurar tamaño original
+    </button>
+    <p className="hint">La escala se limita entre {PERSON_MIN_SCALE}× y {PERSON_MAX_SCALE}× para que el texto nunca se deforme.</p>
     <div className="row2">
      <label className="field">X
       <input type="number" disabled={isLocked} value={Math.round(p.x)} onChange={ev=>update(p.id,{x:Number(ev.target.value)||0})}/>
@@ -238,7 +247,7 @@ if(e&&e.type==='marimba'){
  }
 
  return (
-  <aside className={inspectorCls}>
+  <aside className={inspectorCls} style={inspStyle}>
    <div className="inspector-header">
     <h3>Propiedades</h3>
     <button className="drawer-close" aria-label="Cerrar inspector" title="Cerrar inspector" onClick={()=>onDrawerToggle?.(false)}>✕</button>

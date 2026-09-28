@@ -3,7 +3,7 @@ import {useEffect,useLayoutEffect,useRef,useState,useCallback} from 'react';
 import type Konva from 'konva';
 import {useComposition,elementLocked} from '../store/composition';
 import type {MarimbaElement,PersonElement} from '../types';
-import {elementBBox,hitTestSlot,syncViewport,slotRect} from '../lib/layout';
+import {elementBBox,hitTestSlot,seatScale,syncViewport,slotRect} from '../lib/layout';
 import {useConfirm} from '../hooks/useConfirm';
 
 function MarimbaNode({m,selected}:{m:MarimbaElement;selected:boolean}){
@@ -57,8 +57,14 @@ function PersonNode({e,selected}:{e:PersonElement;selected:boolean}){
  const idx=m?m.positions.findIndex(p=>p.id===e.marimbaPositionId):-1;
  const assigned=!!m&&idx>=0;
  const r=assigned&&m?slotRect(m,idx):null;
- const pw=assigned&&r?r.width-6:e.width;
- const ph=assigned&&r?r.height-6:e.height;
+ // UX-4: al redimensionar la marimba sus personas se redimensionan con ella.
+ // `slotRect` devuelve el puesto SIN escala (Konva escala con scaleX/scaleY y no
+ // toca `width`), asi que antes la persona se quedaba en su tamano original
+ // mientras su puesto crecia en pantalla. `seatScale` aplica el mismo factor,
+ // acotado para que el texto siga siendo legible.
+ const k=assigned&&m?seatScale(m,idx):1;
+ const pw=(assigned&&r?r.width-6:e.width)*k;
+ const ph=(assigned&&r?r.height-6:e.height)*k;
  const rotation=assigned&&m?m.rotation:e.rotation;
  const fontSize=pw<120?11:14;
  // A person sitting on a locked marimba is locked too: the drag handle must not lie.

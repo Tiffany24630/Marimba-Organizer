@@ -9,6 +9,7 @@ import DistributionPanel from '../components/DistributionPanel';
 import RequirementsPanel from '../components/RequirementsPanel';
 import PersonPanel,{DRAG_PERSON_MIME} from '../components/PersonPanel';
 import MarimbaPanel from '../components/MarimbaPanel';
+import ImportPanel from '../components/ImportPanel';
 import type {Song,Template} from '../types';
 
 type SongRow={
@@ -41,8 +42,9 @@ export default function Project({id,onBack}:{id:number;onBack:()=>void}){
  const [compName,setCompName]=useState('');
  const [saveStatus,setSaveStatus]=useState<'idle'|'saving'|'saved'|'error'>('idle');
   const [newSong,setNewSong]=useState('');
- const [sidebarW,setSidebarW]=useState(280);
- const [isResizing,setIsResizing]=useState(false);
+  const [sidebarW,setSidebarW]=useState(280);
+  const [inspectorW,setInspectorW]=useState(260);
+  const [resizing,setResizing]=useState<'left'|'right'|null>(null);
  const [showInspector,setShowInspector]=useState(false);
  const [sideTab,setSideTab]=useState<'personas'|'marimbas'|'paneles'>('personas');
 
@@ -69,6 +71,11 @@ export default function Project({id,onBack}:{id:number;onBack:()=>void}){
  const reloadSongs=(pid:number)=>{
   api.songs(pid).then(setSongs).catch(()=>{});
  };
+ // UX-5: tras importar piezas adicionales hay que refrescar tambien los datos
+ // del proyecto (conteo de canciones y composiciones del encabezado).
+ const reloadProject=(pid:number)=>{
+  api.project(pid).then(setData).catch(()=>{});
+ };
 
  useEffect(()=>{
   let alive=true;
@@ -85,6 +92,7 @@ export default function Project({id,onBack}:{id:number;onBack:()=>void}){
  // The Ctrl+S listener is registered once, but the indirection is refreshed on every
  // render (see the effect right below `save`) so it never captures a stale closure.
  const saveRef=useRef<(()=>void)|undefined>(undefined);
+ const saveAsRef=useRef<(()=>void)|undefined>(undefined);
 const [dropActive,setDropActive]=useState(false);
 const onDragOver=useCallback((ev:React.DragEvent<HTMLElement>)=>{
  if(!Array.from(ev.dataTransfer.types).includes(DRAG_PERSON_MIME))return;
@@ -110,8 +118,10 @@ const onDrop=useCallback((ev:React.DragEvent<HTMLElement>)=>{
  useEffect(()=>{
   const onKey=(e:KeyboardEvent)=>{
    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){
-    e.preventDefault();
-    if(useComposition.getState().isDirty){
+     if(e.shiftKey){
+      if(typeof saveAsRef.current==='function')saveAsRef.current();
+     }
+     else if(useComposition.getState().isDirty){
      saveRef.current?.();
     }
    }
@@ -130,15 +140,16 @@ const onDrop=useCallback((ev:React.DragEvent<HTMLElement>)=>{
   return()=>window.removeEventListener('beforeunload',handleBeforeUnload);
  },[isDirty]);
  useEffect(()=>{
-  if(!isResizing)return;
+  if(!resizing)return;
   const onMove=(e:MouseEvent|TouchEvent)=>{
    const el=(document.getElementById('root')||document)?.querySelector('.workspace') as HTMLElement|null;
    if(!el)return;
    const rect=el.getBoundingClientRect();
-   const x=(e instanceof TouchEvent ? e.touches?.[0]?.clientX : e.clientX)-rect.left;
-   setSidebarW(Math.max(220,Math.min(520,x)));
+   const clientX=(e instanceof TouchEvent ? e.touches?.[0]?.clientX : e.clientX);
+   if(resizing==='left'){setSidebarW(Math.max(220,Math.min(520,clientX-rect.left)));}
+   else{setInspectorW(Math.max(220,Math.min(520,rect.right-clientX)));}
   };
-  const onEnd=()=>{setIsResizing(false);};
+  const onEnd=()=>{setResizing(null);};
   document.addEventListener('mousemove',onMove);
   document.addEventListener('mouseup',onEnd);
   document.addEventListener('touchmove',onMove,{passive:false});
@@ -149,7 +160,7 @@ const onDrop=useCallback((ev:React.DragEvent<HTMLElement>)=>{
    document.removeEventListener('touchmove',onMove);
    document.removeEventListener('touchend',onEnd);
   };
- },[isResizing]);
+ },[resizing]);
  useEffect(()=>{ setShowInspector(false); },[compId]);
 
  const song:Song|undefined=data?.songs.find((s:Song)=>s.id===openSongId);
@@ -254,6 +265,7 @@ const onDrop=useCallback((ev:React.DragEvent<HTMLElement>)=>{
 // in the component body) so `save` is already initialised: assigning it earlier was a
 // temporal-dead-zone crash that took the whole editor down on every render.
 useEffect(()=>{saveRef.current=save;});
+ useEffect(()=>{saveAsRef.current=saveAs;});
 
 
  const saveAs=async()=>{
@@ -264,6 +276,14 @@ useEffect(()=>{saveRef.current=save;});
   const trimmed=targetName.trim();
   if(!trimmed){
    alert('El nombre no puede estar vacío.');
+   return;
+  }
+  if(trimmed===compName.trim()){
+   alert('El nombre de la copia debe ser distinto al de la composición actual.');
+   return;
+  }
+  if(elements.length===0){
+   alert('No hay nada que copiar: el lienzo está vacío.');
    return;
   }
   setSaveStatus('saving');
@@ -280,13 +300,13 @@ useEffect(()=>{saveRef.current=save;});
    setData((d:any)=>({...d,compositions:[...(d?.compositions||[]),created]}));
    setCompId(created.id);
    setCompName(created.name);
-   markClean();
+   markClean(useComposition.getState().elements);
    setSaveStatus('saved');
    window.setTimeout(()=>setSaveStatus('idle'),3000);
    reloadSongs(id);
   }catch(e:any){
    setSaveStatus('error');
-   alert(e.message);
+   alert('No se pudo guardar la copia: '+(e.message||e));
   }
  };
 
@@ -357,7 +377,16 @@ useEffect(()=>{saveRef.current=save;});
   return (
    <main className="page">
     <header className="proj-head">
-     <button onClick={onBack}>← Volver a Proyectos</button>
+     <button onClick={onBack} title="Volver al inicio">← Inicio</button>
+     <button title="Renombrar este proyecto"
+      onClick={async()=>{
+       const n=window.prompt('Nuevo nombre del proyecto:',data.project.name);
+       if(!n||!n.trim())return;
+       try{
+        const up=await api.renameProject(id,n.trim());
+        setData((d:any)=>({...d,project:{...d.project,name:up.name}}));
+       }catch(e:any){alert(e.message);}
+      }}>✎</button>
      <h1>{data.project.name}</h1>
      <p className="hint">
       {data.project.source_filename?`Excel: ${data.project.source_filename} · `:''}
@@ -377,6 +406,16 @@ useEffect(()=>{saveRef.current=save;});
       </div>
 
       {songs.length===0&&<p className="hint">No hay canciones todavía. Créalas aquí o impórtalas desde el Excel.</p>}
+
+      <details className="more-songs" open={songs.length>0}>
+       <summary>Agregar más piezas con un Excel</summary>
+       <p className="hint">
+        Sube otro Excel para sumar canciones a este proyecto. Las piezas nuevas se
+        agregan al final y <b>las que ya están no se modifican</b>.
+       </p>
+       <ImportPanel projectId={id} existingSongNames={songs.map(s=>s.name)}
+        onDone={()=>{reloadSongs(id);reloadProject(id);}}/>
+      </details>
 
       {songs.map(s=>{
        const comps=(data.compositions||[]).filter((c:CompRow)=>c.song_id===s.id);
@@ -506,7 +545,7 @@ useEffect(()=>{saveRef.current=save;});
       {editingSaved?'Guardar':'Guardar'}
      </button>
 
-     <button onClick={saveAs} title="Guardar como una nueva copia independiente">
+     <button onClick={saveAs} disabled={saveStatus==='saving'||elements.length===0} title="Guardar como una nueva copia independiente (Ctrl+Shift+S)">
       Guardar como...
      </button>
 
@@ -518,7 +557,7 @@ useEffect(()=>{saveRef.current=save;});
     </div>
    </header>
 
-   <div className="workspace" style={{'--side-w':`${sidebarW}px`} as React.CSSProperties}>
+   <div className="workspace" style={{'--side-w':`${sidebarW}px`,'--insp-w':`${inspectorW}px`} as React.CSSProperties}>
     <aside className="sidebar" style={{width:sidebarW,maxWidth:sidebarW,minWidth:0}}>
      <div className="sidebar-head">
       <div className="side-tabs" role="tablist">
@@ -580,12 +619,13 @@ useEffect(()=>{saveRef.current=save;});
       </div>
      )}
     </aside>
-    <div className={`splitter ${isResizing?'dragging':''}`} onMouseDown={()=>setIsResizing(true)} onTouchStart={()=>setIsResizing(true)} aria-hidden="true"></div>
+    <div className={`splitter ${resizing==='left'?'dragging':''}`} onMouseDown={()=>setResizing('left')} onTouchStart={()=>setResizing('left')} title="Arrastra para cambiar el ancho" aria-hidden="true"></div>
     <section className="canvas-panel" onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
     <div className={`dropzone ${dropActive?'active':''}`} aria-hidden={!dropActive}>Suelta para asignar a un puesto</div>
     <CanvasEditor/>
    </section>
-    <Inspector detectedPositions={detected} drawerOpen={showInspector} onDrawerToggle={setShowInspector}/>
+    <div className={`splitter right ${resizing==='right'?'dragging':''}`} onMouseDown={()=>setResizing('right')} onTouchStart={()=>setResizing('right')} title="Arrastra para cambiar el ancho del inspector" aria-hidden="true"></div>
+ <Inspector detectedPositions={detected} drawerOpen={showInspector} onDrawerToggle={setShowInspector} width={inspectorW}/>
    </div>
   </main>
  );

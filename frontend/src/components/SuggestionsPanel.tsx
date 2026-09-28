@@ -3,7 +3,7 @@ import {api} from '../lib/api';
 
 type Proposal={person_id:number;name:string;position_type:string;marimba_name:string;marimba_position_index:number;reasons:string[];history:{last_position:string|null;last_marimba:string|null;last_song_name:string|null}|null};
 type ChangeItem={person_id:number;name:string;position_type:string;from_marimba:string|null;to_marimba:string;is_change:boolean;reason:string;reason_code:string};
-type SuggestionBody={song_name:string;position_counts:Record<string,number>;proposals:Proposal[];people_with_history:{person_id:number;name:string;last_position:string|null;last_marimba:string|null;last_song_name:string|null}[];people_without_history:{person_id:number;name:string}[];changes:ChangeItem[]};
+type SuggestionBody={song_name:string;position_counts:Record<string,number>;proposals:Proposal[];marimba_plan:{id?:string;name:string;positions:string[]}[];duplicates_dropped:number;unplaced:{person_id:number;name:string;position_type:string}[];people_with_history:{person_id:number;name:string;last_position:string|null;last_marimba:string|null;last_song_name:string|null}[];people_without_history:{person_id:number;name:string}[];changes:ChangeItem[]};
 
 export default function SuggestionsPanel({songId,songName,onApplied}:{songId:number;songName:string;onApplied:(comp:any)=>void}){
  const [open,setOpen]=useState(false);
@@ -25,7 +25,7 @@ export default function SuggestionsPanel({songId,songName,onApplied}:{songId:num
   if(!confirmNeeded){setConfirmNeeded(true);return;}
   setApplying(true);setError('');
   try{
-   const comp=await api.applySuggestions(songId,{proposals:data.proposals.map(p=>({person_id:p.person_id,name:p.name,position_type:p.position_type,marimba_name:p.marimba_name,marimba_position_index:p.marimba_position_index,reasons:p.reasons})),name:`${songName} - distribución`});
+   const comp=await api.applySuggestions(songId,{proposals:data.proposals.map(p=>({person_id:p.person_id,name:p.name,position_type:p.position_type,marimba_name:p.marimba_name,marimba_position_index:p.marimba_position_index,reasons:p.reasons})),name:`${songName} - distribución`,marimba_plan:data.marimba_plan||[]});
    onApplied(comp);setOpen(false);setConfirmNeeded(false);
   }catch(e:any){setError(String(e.message||e));}
   finally{setApplying(false);}
@@ -59,7 +59,26 @@ export default function SuggestionsPanel({songId,songName,onApplied}:{songId:num
     <h3>Cambios de marimba</h3>
     {data.changes.filter(c=>c.is_change).map(c=><p key={c.person_id} className="hint warn">⚠ {c.reason}</p>)}
    </>)}
-   <h3>Propuestas</h3>
+   <h3>Marimbas propuestas (plantillas)</h3>
+ {(data.marimba_plan||[]).length===0
+  ?<p className="hint">No hay plantillas que apliquen a esta canción.</p>
+  :<div className="tpl-plan">{(data.marimba_plan||[]).map(m=>(
+   <div className="tpl-plan-row" key={m.name}>
+    <strong>{m.name}</strong>
+    <div className="chips">{m.positions.map((pt,i)=><span className="chip" key={i}>{pt}</span>)}</div>
+   </div>
+  ))}</div>}
+ <p className="hint">Se crearán estas marimbas con todos sus puestos. Los que no alcancen a ocuparse quedarán libres y podrás ajustarlos en el lienzo.</p>
+ {data.duplicates_dropped>0&&(
+  <p className="hint warn">Asignación(es) duplicada(s) ignorada(s): una persona solo puede ocupar un puesto.</p>
+ )}
+ {((data.unplaced||[]).length>0)&&(
+    <p className="hint warn">
+     ⚠ Sin puesto compatible en las plantillas: {(data.unplaced||[]).map(u=>u.name).join(', ')}.
+     Agregalos a una plantilla o acomodalos a mano en el lienzo.
+    </p>
+   )}
+  <h3>Propuestas</h3>
    {data.proposals.length===0
     ?<p className="hint">No hay propuestas para esta canción.</p>
     :data.proposals.map(p=>(<div key={p.person_id} className="sugg-row">
@@ -74,7 +93,7 @@ export default function SuggestionsPanel({songId,songName,onApplied}:{songId:num
     ?<button className="primary" onClick={apply} disabled={applying||data.proposals.length===0}>Aplicar sugerencia</button>
     :(<div className="review-block warn">
       <h3>Confirmar aplicación</h3>
-      <p>Se creará una nueva composición para esta canción. Revisa las asignaciones existentes antes de continuar.</p>
+      <p>Se creará una nueva composición usando las plantillas indicadas. La composición anterior queda intacta.</p>
       <button className="primary" onClick={apply} disabled={applying}>{applying?'Aplicando…':'Confirmar y aplicar'}</button>{' '}
       <button onClick={()=>setConfirmNeeded(false)}>Cancelar</button>
      </div>)}
