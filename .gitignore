@@ -5,3 +5,10 @@ backend/.pytest_cache/
 backend/marimba.db
 frontend/node_modules/
 frontend/dist/
+
+# --- Artefactos generados: no deben versionarse ---
+*.tsbuildinfo
+backend/test_marimba.db
+frontend/test-results/
+# Residuo temporal de una sesion de desarrollo (extracto numerado de Project.tsx)
+proj.tsx
