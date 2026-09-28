@@ -1,11 +1,11 @@
 import unicodedata,re
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from app.db.session import get_db
 from app.models import Project,Person,Position,Song,SongAssignment,MarimbaTemplate,Composition
-from app.schemas.schemas import ProjectIn,CompositionIn,CompositionPatch,MarimbaTemplateIn,ImportConfirm,SongIn,SongPatch,CompositionDuplicateIn,ApplySuggestions,PersonIn,PersonPatch
+from app.schemas.schemas import ProjectIn,ProjectPatch,CompositionIn,CompositionPatch,MarimbaTemplateIn,MarimbaTemplatePatch,ImportConfirm,SongIn,SongPatch,CompositionDuplicateIn,ApplySuggestions,PersonIn,PersonPatch
 from app.services.excel_parser import parse_workbook,match_people,detect_duplicates
 from app.services.suggestions import suggest, get_suggestions_for_song
 from app.services.suggestions.distribution import get_distribution_for_song
@@ -80,11 +80,50 @@ def confirm(payload:ImportConfirm,db:Session=Depends(get_db)):
     existing_people={n(p.name):p for p in db.scalars(select(Person)).all()}
     existing_positions={n(p.name):p for p in db.scalars(select(Position)).all()}
 
+    # UX-5: import incremental. Las canciones del Excel se AGREGAN al final de
+    # las que ya tiene el proyecto; nunca se reemplazan ni se descartan.
+    # Solo se deduplica DENTRO del mismo archivo (una cancion repetida en el
+    # mismo Excel es un error del archivo), y se reportan como `duplicate_songs`
+    # las que ya existian en el proyecto, para que la interfaz pueda avisar.
+    songs_before=db.scalar(
+        select(func.count()).select_from(Song).where(Song.project_id==project.id)) or 0
+    existing_song_names={n(s.name) for s in
+                         db.scalars(select(Song).where(Song.project_id==project.id)).all()}
+    # Siguiente `order_index` libre: se toma del maximo existente, no del conteo,
+    # para que un hueco previo no genere indices repetidos.
+    max_order=db.scalar(
+        select(func.max(Song.order_index)).where(Song.project_id==project.id))
+    next_order=0 if max_order is None else max_order+1
+    # Nombres ya vistos DENTRO de este payload.
+    seen_in_payload=set()
+    added=[]
+    duplicates=[]
+    ignored=[]
+
     for sh in payload.sheets:
         for song_data in sh.get('songs',[]):
-            song=Song(project_id=project.id,name=song_data['name'],order_index=len(project.songs))
+            song_name=(song_data.get('name') or '').strip()
+
+            if not song_name:
+                continue
+
+            key=n(song_name)
+
+            # Repetida dentro del mismo archivo: se conserva la primera.
+            if key in seen_in_payload:
+                ignored.append(song_name)
+                continue
+
+            seen_in_payload.add(key)
+
+            if key in existing_song_names:
+                duplicates.append(song_name)
+
+            song=Song(project_id=project.id,name=song_name,order_index=next_order)
+            next_order+=1
             db.add(song) 
             db.flush()
+            added.append(song_name)
 
             for a in song_data.get('assignments',[]):
                 raw_name=(a.get('person') or '').strip()
@@ -116,7 +155,9 @@ def confirm(payload:ImportConfirm,db:Session=Depends(get_db)):
 
     db.commit()
 
-    return {'id':project.id,'name':project.name}
+    return {'id':project.id,'name':project.name,
+            'added_songs':added,'duplicate_songs':duplicates,'ignored_songs':ignored,
+            'songs_before':songs_before,'songs_after':songs_before+len(added)}
 
 @router.get('/projects')
 def projects(db:Session=Depends(get_db)): 
@@ -130,6 +171,60 @@ def create_project(p:ProjectIn,db:Session=Depends(get_db)):
     db.refresh(x)
 
     return obj(x)
+
+@router.patch('/projects/{pid}')
+def rename_project(pid:int,p:ProjectPatch,db:Session=Depends(get_db)):
+    x=db.get(Project,pid)
+
+    if not x:
+        raise HTTPException(404,'Proyecto no encontrado')
+
+    if p.name is not None:
+        name=p.name.strip()
+
+        if not name:
+            raise HTTPException(400,'El nombre del proyecto no puede estar vacío.')
+
+        dup=db.scalar(select(Project).where(Project.name==name,Project.id!=pid))
+
+        if dup:
+            raise HTTPException(409,f'Ya existe un proyecto llamado "{name}".')
+
+        x.name=name
+
+    if p.description is not None:
+        x.description=p.description.strip() or None
+
+    db.commit()
+    db.refresh(x)
+
+    return obj(x)
+
+@router.delete('/projects/{pid}')
+def delete_project(pid:int,db:Session=Depends(get_db)):
+    """Elimina un trabajo completo: canciones, asignaciones y composiciones.
+
+    No toca el catalogo global de personas ni las plantillas.
+    """
+    x=db.get(Project,pid)
+
+    if not x:
+        raise HTTPException(404,'Proyecto no encontrado')
+
+    song_ids=[s.id for s in x.songs]
+    assignments=0
+
+    if song_ids:
+        assignments=db.scalar(select(func.count(SongAssignment.id)).where(SongAssignment.song_id.in_(song_ids))) or 0
+
+    compositions=db.query(Composition).filter(Composition.project_id==pid).count()
+    # Project.songs / Project.compositions ya tienen cascade='all, delete-orphan',
+    # y Song.assignments tambien: basta con borrar el proyecto.
+    db.delete(x)
+    db.commit()
+
+    return {'deleted':True,'id':pid,'songs':len(song_ids),
+            'assignments_removed':assignments,'compositions_removed':compositions}
 
 @router.get('/projects/{pid}')
 def project(pid:int,db:Session=Depends(get_db)):
@@ -148,14 +243,47 @@ def project(pid:int,db:Session=Depends(get_db)):
 def people(db:Session=Depends(get_db)): 
     return [obj(x) for x in db.scalars(select(Person).order_by(Person.name)).all()]
 
+def _person_in_project(db, name, project_id):
+    """
+    Devuelve la persona con ese nombre que pertenece al proyecto, si existe.
+
+    Dos caminos: creada explicitamente para el proyecto (`project_id`) o
+    heredada del catalogo global (`project_id IS NULL`) pero con alguna
+    participacion en sus canciones. Asi el duplicado se detecta aunque la
+    persona todavia no tenga asignaciones.
+    """
+    if project_id is None:
+        return db.scalar(select(Person).where(Person.name == name))
+    directa = db.scalar(select(Person).where(
+        Person.name == name, Person.project_id == project_id))
+    if directa:
+        return directa
+    song_ids = select(Song.id).where(Song.project_id == project_id)
+    return db.scalar(
+        select(Person)
+        .join(SongAssignment, SongAssignment.person_id == Person.id)
+        .where(SongAssignment.song_id.in_(song_ids),
+               Person.name == name,
+               Person.project_id.is_(None))
+    )
+
 @router.post('/people')
 def create_person(p:PersonIn,db:Session=Depends(get_db)):
     name=p.name.strip()
     if not name:
         raise HTTPException(400,'El nombre de la persona no puede estar vacío.')
-    if db.scalar(select(Person).where(Person.name==name)):
-        raise HTTPException(409,f'Ya existe una persona llamada "{name}".')
-    x=Person(name=name)
+    if p.project_id is not None and not db.get(Project,p.project_id):
+        raise HTTPException(404,f'El proyecto {p.project_id} no existe.')
+    # UX-4: la validacion de duplicado se hace SOLO dentro del proyecto actual.
+    # Antes bloqueaba a quien ya existiria en otro proyecto, sin poder agregarlo.
+    # Sin `project_id` no hay ambito de proyecto, asi que se exige unicidad global.
+    if p.project_id is None:
+        dup = db.scalar(select(Person).where(Person.name == name))
+    else:
+        dup = _person_in_project(db, name, p.project_id)
+    if dup:
+        raise HTTPException(409,f'Ya existe una persona llamada "{name}" en este proyecto.')
+    x=Person(name=name,project_id=p.project_id)
     db.add(x)
     try:
         db.commit()
@@ -319,6 +447,57 @@ def create_template(p:MarimbaTemplateIn,db:Session=Depends(get_db)):
     db.refresh(x)
     
     return obj(x)
+
+@router.patch('/marimba-templates/{tid}')
+def update_template(tid:int,p:MarimbaTemplatePatch,db:Session=Depends(get_db)):
+    x=db.get(MarimbaTemplate,tid)
+
+    if not x:
+        raise HTTPException(404,'Plantilla no encontrada')
+
+    if p.name is not None:
+        name=p.name.strip()
+
+        if not name:
+            raise HTTPException(400,'El nombre de la plantilla no puede estar vacío.')
+
+        dup=db.scalar(select(MarimbaTemplate).where(MarimbaTemplate.name==name,MarimbaTemplate.id!=tid))
+
+        if dup:
+            raise HTTPException(409,f'Ya existe una plantilla llamada "{name}".')
+
+        x.name=name
+
+    if p.description is not None:
+        x.description=p.description.strip() or None
+
+    if p.positions is not None:
+        positions=[str(t).strip() for t in p.positions if str(t).strip()]
+
+        if not positions:
+            raise HTTPException(400,'La plantilla debe tener al menos un puesto.')
+
+        x.positions=positions
+
+    db.commit()
+    db.refresh(x)
+
+    return obj(x)
+
+@router.delete('/marimba-templates/{tid}')
+def delete_template(tid:int,db:Session=Depends(get_db)):
+    """Elimina una plantilla global. Solo afecta propuestas futuras: las
+    marimbas ya guardadas en composiciones son copias independientes."""
+    x=db.get(MarimbaTemplate,tid)
+
+    if not x:
+        raise HTTPException(404,'Plantilla no encontrada')
+
+    name=x.name
+    db.delete(x)
+    db.commit()
+
+    return {'deleted':True,'id':tid,'name':name}
 
 @router.get('/compositions/{cid}')
 def composition(cid:int,db:Session=Depends(get_db)):
@@ -560,5 +739,5 @@ def apply_distribution(song_id:int, payload:ApplySuggestions, db:Session=Depends
 @router.post('/songs/{song_id}/suggestions/apply')
 def apply_suggestions(song_id:int, payload:ApplySuggestions, db:Session=Depends(get_db)):
     song=_get_song_or_404(song_id,db)
-    comp=create_composition_from_proposals(song_id, payload.proposals, payload.name, db)
+    comp=create_composition_from_proposals(song_id, payload.proposals, payload.name, db, marimba_plan=payload.marimba_plan)
     return comp

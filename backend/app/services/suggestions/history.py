@@ -42,9 +42,19 @@ def parse_composition_marimba_info(data):
 
     return person_marimba
 
-def get_person_history(project_id, db, exclude_song_id=None):
+def get_person_history(project_id, db, exclude_song_id=None, before_song=None):
     """
     Derivar historial de cada persona desde las canciones y composiciones del proyecto.
+
+    `exclude_song_id` excluye una cancion concreta (la que se esta organizando).
+    `before_song` acota el historial a las canciones ANTERIORES a esa, segun
+    `order_index`. Sin ese dato, el historial incluiria tambien las canciones
+    posteriores y la propuesta de la primera cancion se decidiria con informacion
+    del futuro (D3).
+
+    El desempate es estable: al compartir `order_index` se ordena por `id`, de modo
+    que "anterior" significa un par (order_index, id) estrictamente menor. El
+    resultado es determinista ante empates.
     """
     songs = db.scalars(select(Song).where(
         Song.project_id == project_id
@@ -52,6 +62,11 @@ def get_person_history(project_id, db, exclude_song_id=None):
 
     if exclude_song_id is not None:
         songs = [s for s in songs if s.id != exclude_song_id]
+
+    if before_song is not None:
+        limit = (before_song.order_index, before_song.id)
+        songs = [s for s in songs
+                 if (s.order_index or 0, s.id) < (limit[0] or 0, limit[1])]
 
     song_ids = [s.id for s in songs]
 

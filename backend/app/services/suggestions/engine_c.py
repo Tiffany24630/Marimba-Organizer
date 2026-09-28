@@ -24,7 +24,10 @@ def get_distribution_for_song(song_id, db):
     # plantillas globales para que la propuesta nunca quede sin marimbas.
     slots, slot_source = resolve_slots(song, db, reqs)
     pmap = get_previous_assignment_map(prev, db)
-    hist = get_person_history(song.project.id, db, exclude_song_id=song_id)
+    # D3: el historial se limita a las canciones ANTERIORES a esta. Sin esto, la
+    # propuesta de la primera canción usaba compositions de canciones posteriores.
+    hist = get_person_history(song.project.id, db, exclude_song_id=song_id,
+                              before_song=song)
     hmap = {h['person_id']: h for h in hist}
     res = propose_distribution(reqs, avail, slots, pmap, hmap)
     cap = {}

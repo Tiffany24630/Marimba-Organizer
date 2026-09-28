@@ -82,11 +82,17 @@ def get_previous_assignment_map(previous_song, db):
 
     for a in previous_song.assignments:
         slot = by_occ.get(a.person_id, {})
+        # D1: se conserva tambien el identificador de la INSTANCIA de marimba.
+        # Con `marimba_name` solo, dos instancias distintas de la misma plantilla
+        # son indistinguibles y la continuidad puede llevarse a la marimba
+        # equivocada. `marimba_id` es la clave real; el nombre queda como respaldo
+        # para composiciones antiguas que no traigan el dato.
         info[a.person_id] = {'position': a.position.name,
+                             'marimba_id': slot.get('marimba_id') or None,
                              'marimba_name': slot.get('marimba_name'),
                              'slot_id': slot.get('slot_id'),
                              'slot_index': slot.get('slot_index')}
-        
+
     return info
 
 def get_default_templates(db):

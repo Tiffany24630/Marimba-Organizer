@@ -4,6 +4,7 @@ from app.services.suggestions.history import get_person_history
 from app.services.suggestions.requirements import get_song_requirements, get_song_assignments, get_song_requirements_report
 from app.services.suggestions.movement import analyze_changes
 from app.services.suggestions.distributor import generate_proposals, create_composition_from_proposals
+from app.services.suggestions.engine_a import get_default_templates
 
 def suggest(data):
     """
@@ -48,8 +49,10 @@ def get_suggestions_for_song(song_id, db):
 
     position_counts = get_song_requirements(song_id, db)
     assignments = get_song_assignments(song_id, db)
-    history = get_person_history(song.project_id, db, exclude_song_id=song_id)
-    dist = generate_proposals(assignments, history)
+    # D3: solo las canciones anteriores a esta influyen en la propuesta.
+    history = get_person_history(song.project_id, db, exclude_song_id=song_id,
+                                 before_song=song)
+    dist = generate_proposals(assignments, history, get_default_templates(db))
     proposals = dist['proposals']
     changes = analyze_changes(proposals, history)
 
@@ -60,6 +63,9 @@ def get_suggestions_for_song(song_id, db):
         'song_name': song.name,
         'position_counts': position_counts,
         'proposals': proposals,
+        'marimba_plan': dist.get('marimba_plan', []),
+        'duplicates_dropped': dist.get('duplicates_dropped', 0),
+        'unplaced': dist.get('unplaced', []),
         'people_with_history': people_with_history,
         'people_without_history': people_without_history,
         'changes': changes,

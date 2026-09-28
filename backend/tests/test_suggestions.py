@@ -344,11 +344,23 @@ def test_12_suggestion_endpoints_e2e():
         cp = next(p for p in body["proposals"]
                   if p["name"] == "Carlos")
         
-        assert cp["marimba_name"] == "Marimba A"
+        # UX-3: las sugerencias se arman con las plantillas globales, no con una
+        # marimba unica, y cada persona cae en un puesto compatible de una instancia.
+        plan = body["marimba_plan"]
+        plan_names = {m["name"] for m in plan}
+        assert plan_names, "debe haber plan de marimbas derivado de plantillas"
+        assert cp["marimba_name"] in plan_names, (
+            f'{cp["marimba_name"]} debe pertenecer al plan {plan_names}')
+        flat = [(m["name"], pos) for m in plan for pos in m["positions"]]
+        assert (cp["marimba_name"], cp["position_type"]) in flat
+
+        # La continuidad de posicion/marimba sigue informada en las razones.
+        assert any("Continuidad" in r for r in cp["reasons"])
 
         r = client.post(f"/api/songs/{sb.id}/suggestions/apply",
                         json={"proposals": body["proposals"],
-                              "name": "Song B - Dist"})
+                              "name": "Song B - Dist",
+                              "marimba_plan": body["marimba_plan"]})
 
         assert r.status_code == 200
 

@@ -22,8 +22,19 @@ class Person(Base):
     __tablename__='people'
 
     id:Mapped[int]=mapped_column(primary_key=True)
-    name:Mapped[str]=mapped_column(String(200),unique=True) 
+    # UX-4: SIN unique global. La unicidad es POR PROYECTO y se valida en
+    # `POST /people` contra las participaciones del proyecto actual. Con
+    # `unique=True` en la base, dos proyectos distintos no podían tener a la
+    # misma persona (homonimos), por mas que la ruta lo permitiera.
+    name:Mapped[str]=mapped_column(String(200),index=True)
     active:Mapped[bool]=mapped_column(default=True)
+    # Proyecto al que pertenece la persona. `NULL` = persona del catalogo global
+    # (compartida, normalmente creada por la importacion de un Excel). Con esta
+    # columna la unicidad POR PROYECTO es real y no depende de que la persona ya
+    # tenga una asignacion musical: antes dos altas identicas en el mismo
+    # proyecto pasaban el chequeo si nadie estaba asignado todavia.
+    project_id:Mapped[int|None]=mapped_column(
+        ForeignKey('projects.id',ondelete='CASCADE'),nullable=True,index=True)
 
 class Position(Base):
     __tablename__='positions'
