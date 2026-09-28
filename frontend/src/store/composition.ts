@@ -1,6 +1,6 @@
 import {create} from 'zustand';
 import type {Element,MarimbaElement,PersonElement} from '../types';
-import {MARIMBA_DEFAULT,PERSON_H,PERSON_W,nearestSlot,slotCenter,slotRect,worldToLocal} from '../lib/layout';
+import {MARIMBA_DEFAULT,PERSON_H,PERSON_W,PERSON_MAX_W,PERSON_MAX_H,PERSON_MIN_H,PERSON_MIN_W,clampNumber,clampPersonScale,nearestSlot,slotCenter,slotRect,worldToLocal} from '../lib/layout';
 
 export const uid=()=>Math.random().toString(36).slice(2)+Date.now();
 
@@ -105,6 +105,41 @@ function committed(s:State,els:Element[],extra?:Partial<State>):Partial<State>{
  return {future:[],elements:els,isDirty:true,...extra};
 }
 
+/**
+ * Limites de escala y tamano de una persona.
+ *
+ * La fuente unica de verdad vive en `lib/layout.ts` porque el lienzo necesita
+ * exactamente los mismos limites al dibujar. Aqui se reexportan para no romper
+ * los imports existentes del store y del inspector.
+ */
+export {PERSON_MIN_SCALE,PERSON_MAX_SCALE,clampPersonScale,clampNumber,
+ PERSON_MIN_W,PERSON_MAX_W,PERSON_MIN_H,PERSON_MAX_H} from '../lib/layout';
+
+/**
+ * Al cambiar el tamano de una marimba, sus personas ocupadas se reajustan.
+ *
+ * El escalado VISIBLE lo aplica `PersonNode` via `seatScale(marimba, idx)`, que
+ * es la unica regla y ya viene acotada. Aqui solo se guarda en el elemento el
+ * tamano que tendra la persona a escala 1, para que el Inspector, el guardado y
+ * una persona que se suelte después partan del mismo numero.
+ */
+function withCascade(next:Element[], marimbaId:string|null){
+ if(!marimbaId)return next;
+ const m=next.find(e=>e.id===marimbaId&&e.type==='marimba');
+ if(!m||m.type!=='marimba')return next;
+ return next.map(e=>{
+  if(e.type!=='person'||e.marimbaId!==marimbaId)return e;
+  if(!e.marimbaPositionId)return e;
+  const i=m.positions.findIndex(p=>p.id===e.marimbaPositionId);
+  if(i<0)return e;
+  const r=slotRect(m,i);
+  // A escala 1 (`k=1`): el ancho/alto base del puesto.
+  return {...e,width:clampNumber(r.width-6,PERSON_MIN_W,PERSON_MAX_W),
+   height:clampNumber(r.height-6,PERSON_MIN_H,PERSON_MAX_H),
+   scaleX:1,scaleY:1};
+ });
+}
+
 export function compatiblePosition(a:string,b:string){
  return a.trim().normalize('NFKC').toLocaleLowerCase()===b.trim().normalize('NFKC').toLocaleLowerCase();
 }
@@ -124,7 +159,9 @@ export function assignmentError(els:Element[],personId:string,marimbaId:string,s
  if(elementLocked(els,p.id)||m.locked)return 'Desbloquea la persona y las marimbas antes de asignar.';
  const occupant=els.find(x=>x.type==='person'&&x.personId===slot.personId);
  if(occupant&&elementLocked(els,occupant.id))return 'El ocupante está bloqueado.';
- if(!compatiblePosition(p.positionType,slot.type))return `Puesto incompatible: ${p.positionType} / ${slot.type}. Retira la persona antes de cambiar su tipo musical.`;
+ // UX-4: en edicion MANUAL no se restringe la combinacion persona/puesto.
+ // El motor de sugerencias si respeta el puesto musical de la plantilla; el
+ // usuario tiene libertad para acomodar a quien quiera donde quiera.
  return null;
 }
 
@@ -265,8 +302,21 @@ export const useComposition=create<State>((set)=>({
   const el=s.elements.find(e=>e.id===id);
   if(!el)return {};
   if(elementLocked(s.elements,id))return {};
-  if(Object.entries(patch).every(([key,value])=>(el as any)[key]===value))return {};
-  return step(s,s.elements.map(e=>e.id===id?{...e,...patch} as Element:e));
+  // UX-4: el texto de una persona no puede deformarse. Se acota la escala y se
+  // conserva la proporcion, de modo que siempre pueda volver a su tamano original.
+  let safe={...patch};
+  if(el.type==='person'){
+   safe={...safe,width:Math.max(60,patch.width??el.width),height:Math.max(28,patch.height??el.height)};
+   const touches=(k:keyof typeof patch)=>patch[k]!==undefined;
+   if(touches('scaleX')||touches('scaleY')||touches('width')||touches('height')){
+    const ratio=Math.max(0.15,Math.min(4,(patch.scaleX??el.scaleX)/(patch.scaleY??el.scaleY)));
+    const k=clampPersonScale(ratio);
+    safe={...safe,scaleX:k,scaleY:k};
+   }
+  }
+  if(Object.entries(safe).every(([key,value])=>(el as any)[key]===value))return {};
+  const next=s.elements.map(e=>e.id===id?({...e,...safe} as Element):e);
+  return step(s,el.type==='marimba'?withCascade(next,id):next);
  }),
  // GLOBAL write: PATCH /people/{id} already succeeded, so the catalog change is a fact.
  // It is deliberately kept OUT of the composition history: undo must never pretend to
@@ -341,7 +391,7 @@ export const useComposition=create<State>((set)=>({
     x:c&&r?c.x-r.width/2:e.x,y:c&&r?c.y-r.height/2:e.y};
    return e;
   });
-  return step(s,withRepositioned(freed,stripped));
+  return step(s,withCascade(withRepositioned(freed,stripped),marimbaId));
  }),
  setPositionType:(marimbaId,positionId,type)=>set(s=>{
   const m=s.elements.find(e=>e.id===marimbaId);
@@ -356,7 +406,9 @@ export const useComposition=create<State>((set)=>({
   if(t===pe.positionType)return {};
   const m=s.elements.find((e):e is MarimbaElement=>e.id===pe.marimbaId&&e.type==='marimba');
   const slot=m?.positions.find(p=>p.id===pe.marimbaPositionId);
-  if(slot&&!compatiblePosition(t,slot.type))return {};
+  // Solo se bloquea si esta SENTADA y su marimba/puesto ya no existe (estado roto).
+  // Una persona libre siempre puede cambiar su puesto musical.
+  if(pe.marimbaId&&(!m||!slot))return {};
   return step(s,s.elements.map(el=>{
    if(el.id===personElId&&el.type==='person')return {...el,positionType:t};
    return el;
@@ -371,7 +423,7 @@ export const useComposition=create<State>((set)=>({
   const positions=[...m.positions];
   [positions[i],positions[j]]=[positions[j],positions[i]];
   const mm={...m,positions};
-  return step(s,withRepositioned(s.elements.map(e=>e.id===marimbaId?mm:e),mm));
+  return step(s,withCascade(withRepositioned(s.elements.map(e=>e.id===marimbaId?mm:e),mm),marimbaId));
  }),
  assign:(personElId,marimbaId,positionId)=>set(s=>{
   const pe=s.elements.find(e=>e.id===personElId);
@@ -435,7 +487,7 @@ export const useComposition=create<State>((set)=>({
   const els=s.elements.map(e=>e.id===id&&e.type==='marimba'?{...e,...g}:e);
   const m=els.find(e=>e.id===id);
   if(!m||m.type!=='marimba')return {elements:els};
-  const positioned=withRepositioned(els,m);
+  const positioned=withCascade(withRepositioned(els,m),id);
   if(JSON.stringify(positioned)===JSON.stringify(s.elements))return {};
   return {elements:positioned,isDirty:true};
  }),

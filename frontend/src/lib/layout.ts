@@ -28,6 +28,43 @@ export function slotRect(m:MarimbaElement,i:number){
  return {x:MARIMBA_DEFAULT.pad+i*(w+MARIMBA_DEFAULT.gap),y:MARIMBA_DEFAULT.slotY,width:w,height:MARIMBA_DEFAULT.slotH};
 }
 
+/**
+ * Limites de escala de una persona sentada en un puesto.
+ *
+ * Konva escala la marimba con `scaleX/scaleY` y no cambia `width`, asi que el
+ * puesto se agranda en pantalla aunque `slotRect` devuelva el valor sin escala.
+ * Estas personas acompanan ese crecimiento con tope: por debajo el texto deja de
+ * leerse y por encima deja de caber con claridad en el puesto.
+ */
+export const PERSON_MIN_SCALE=0.55;
+export const PERSON_MAX_SCALE=2.2;
+export const clampPersonScale=(v:number)=>Number.isFinite(v)
+ ?Math.max(PERSON_MIN_SCALE,Math.min(PERSON_MAX_SCALE,v))
+ :1;
+
+/** Topes duros en pixeles para que el texto nunca sea ilegible ni desproporcionado. */
+export const PERSON_MIN_W=40;
+export const PERSON_MAX_W=420;
+export const PERSON_MIN_H=24;
+export const PERSON_MAX_H=150;
+export const clampNumber=(v:number,lo:number,hi:number)=>
+ Number.isFinite(v)?Math.max(lo,Math.min(hi,v)):lo;
+
+/**
+ * Escala visual que ve una persona sentada en el puesto `i` de la marimba `m`.
+ *
+ * Devuelve 1 cuando la marimba no esta escalada, de modo que el comportamiento
+ * normal no cambia. Se usa el promedio de X e Y para que el texto nunca se
+ * deforme, y se acota con `clampPersonScale` para no perder legibilidad.
+ */
+export function seatScale(m:MarimbaElement,i:number){
+ const sx=Math.abs(m.scaleX||1),sy=Math.abs(m.scaleY||1);
+ const k=(sx+sy)/2;
+ // Un margen del 1% evita reescalados por decimales de Konva al soltar el tirador.
+ if(Math.abs(k-1)<0.01)return 1;
+ return clampPersonScale(k);
+}
+
 export function localToWorld(m:MarimbaElement,lx:number,ly:number){
  const r=m.rotation*Math.PI/180,c=Math.cos(r),s=Math.sin(r);
  const X=lx*m.scaleX,Y=ly*m.scaleY;
@@ -74,9 +111,13 @@ export function elementBBox(e:Element, marimba?:MarimbaElement){
  if(e.type==='person'&&e.marimbaId&&marimba){
   const idx=marimba.positions.findIndex(p=>p.id===e.marimbaPositionId);
   if(idx>=0){
+   // Misma regla que PersonNode: el puesto sin escala por el factor de la
+   // marimba. Si no, la caja de la persona no coincidiria con lo que se dibuja
+   // y el PNG exportado la cortaria.
+   const k=seatScale(marimba,idx);
    const r=slotRect(marimba,idx);
-   w=r.width-6;
-   h=r.height-6;
+   w=(r.width-6)*k;
+   h=(r.height-6)*k;
    ox=w/2;
    oy=h/2;
    rot=marimba.rotation;

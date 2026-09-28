@@ -1,8 +1,12 @@
 const API=import.meta.env.VITE_API_URL||'http://localhost:8000/api';
 async function req(path:string,options:RequestInit={}){const r=await fetch(API+path,options); if(!r.ok) throw new Error(await r.text()); return r.json();}
 export const api={
- projects:()=>req('/projects'), project:(id:number)=>req(`/projects/${id}`), people:()=>req('/people'),
- createPerson:(name:string)=>req('/people',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})}),
+ projects:()=>req('/projects'), project:(id:number)=>req(`/projects/${id}`),
+ // Alta de proyecto en blanco: sin Excel y sin plantilla. El usuario arma las
+ // canciones, personas y marimbas manualmente dentro del proyecto.
+ createProject:(payload:{name:string;description?:string})=>req('/projects',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),
+ renameProject:(id:number,name:string)=>req(`/projects/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})}),
+ deleteProject:(id:number)=>req(`/projects/${id}`,{method:'DELETE'}), people:()=>req('/people'),
  renamePerson:(id:number,name:string)=>req(`/people/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})}),
  // Explicit scopes, mirroring the backend contract:
  //  - 'composition': only drops the visual representation from the project's compositions.
@@ -10,6 +14,10 @@ export const api={
  // Neither one ever deletes the global catalog row.
  removePersonFromProject:(id:number,projectId:number,scope:'composition'|'project')=>req(`/people/${id}?project_id=${projectId}&scope=${scope}`,{method:'DELETE'}),
  positions:()=>req('/positions'), templates:()=>req('/marimba-templates'),
+ deleteTemplate:(id:number)=>req(`/marimba-templates/${id}`,{method:'DELETE'}),
+ updateTemplate:(id:number,payload:{name?:string;description?:string;positions?:string[]})=>req(`/marimba-templates/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),
+ createTemplate:(payload:{name:string;description?:string;positions:string[]})=>req('/marimba-templates',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),
+ createPerson:(name:string,projectId?:number)=>req('/people',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,project_id:projectId??null})}),
  preview:(file:File)=>{const f=new FormData();f.append('file',file);return req('/imports/preview',{method:'POST',body:f})},
  confirm:(payload:any)=>req('/imports/confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),
  createComposition:(payload:any)=>req('/compositions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),
@@ -26,5 +34,5 @@ export const api={
  songSuggestions:(songId:number)=>req(`/songs/${songId}/suggestions`),
  songDistribution:(songId:number)=>req(`/songs/${songId}/distribution-suggestion`),
  applyDistribution:(songId:number,payload:{proposals:any[];name?:string})=>req(`/songs/${songId}/distribution/apply`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),
- applySuggestions:(songId:number,payload:{proposals:any[];name?:string})=>req(`/songs/${songId}/suggestions/apply`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),
+ applySuggestions:(songId:number,payload:{proposals:any[];name?:string;marimba_plan?:{name:string;positions:string[]}[]})=>req(`/songs/${songId}/suggestions/apply`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),
 };
