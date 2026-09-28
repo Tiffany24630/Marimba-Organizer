@@ -134,17 +134,25 @@ export default function Inspector({detectedPositions,drawerOpen,onDrawerToggle}:
     </div>
 
     <label className="field">Nombre
-     <input defaultValue={p.name} key={p.id+p.name} onBlur={ev=>{
+     <input defaultValue={p.name} key={p.id+p.name} disabled={isLocked} onBlur={async ev=>{
       const n=ev.target.value.trim();
-      if(!n||n===p.name)return;
-      renamePerson(p.id,n);
-      api.renamePerson(p.personId,n).catch((e:any)=>{alert('No se pudo guardar el nombre: '+(e.message||e));ev.target.value=p.name;});
+      if(!n||n===p.name){
+       ev.target.value=p.name;
+       return;
+      }
+      try{
+       await api.renamePerson(p.personId,n);
+       renamePerson(p.id,n);
+      }catch(e:any){
+       alert('No se pudo guardar el nombre: '+(e.message||e));
+       ev.target.value=p.name;
+      }
      }}/>
     </label>
     {datalist}
 
     <label className="field">Puesto musical
-     <input list={listId} value={p.positionType} onChange={ev=>setPersonPositionType(p.id,ev.target.value)}/>
+     <input list={listId} disabled={isLocked} value={p.positionType} onChange={ev=>setPersonPositionType(p.id,ev.target.value)}/>
     </label>
 
     <div className="row2">
@@ -159,14 +167,20 @@ export default function Inspector({detectedPositions,drawerOpen,onDrawerToggle}:
     <h4>Asignación</h4>
     {m&&pos
      ?<p className="hint">En <strong>{m.name}</strong> · posición física p{idx} ({pos.type})</p>
-     :<p className="hint">Libre en el lienzo. Arrástrala sobre una marimba para asignarle un puesto.</p>}
+     :<p className="hint">Libre en el lienzo. Selecciona un puesto para asignarle.</p>}
+
+    {m&&pos&&pos.type!==p.positionType&&(
+     <button disabled={isLocked||Boolean(m.locked)} onClick={()=>setPositionType(m.id,pos.id,p.positionType)} style={{marginBottom:'8px'}}>
+      Sincronizar puesto ({pos.type} → {p.positionType})
+     </button>
+    )}
 
     {m&&pos&&<button disabled={isLocked} onClick={()=>{const r=slotRect(m,idx);unassign(p.id,{x:p.x-r.width/2,y:p.y-r.height/2});}}>Quitar del puesto</button>}
     <button className="danger" disabled={isLocked} onClick={()=>{
      if(m&&pos&&!window.confirm(`${p.name} está asignada a ${m.name} (${pos.type}). ¿Eliminar la persona del lienzo? El puesto quedará libre.`))return;
      remove(p.id);
     }}>
-     {isLocked?'Desbloquea para eliminar':'Eliminar del proyecto'}
+     {isLocked?'Desbloquea para eliminar':'Eliminar del lienzo'}
     </button>
    </aside>
   );

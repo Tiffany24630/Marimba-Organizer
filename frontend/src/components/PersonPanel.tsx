@@ -1,9 +1,9 @@
 import {useState} from 'react';
 import {api} from '../lib/api';
-import {useComposition} from '../store/composition';
+import {useComposition, elementLocked} from '../store/composition';
 import type {MarimbaElement,PersonElement} from '../types';
 
-export default function PersonPanel({onDeleted}:{onDeleted?:(personId:number)=>void}){
+export default function PersonPanel({projectId, onDeleted}:{projectId?:number; onDeleted?:(personId:number)=>void}){
  const elements=useComposition(s=>s.elements);
  const selectedId=useComposition(s=>s.selectedId);
  const select=useComposition(s=>s.select);
@@ -42,15 +42,19 @@ export default function PersonPanel({onDeleted}:{onDeleted?:(personId:number)=>v
   finally{setBusy(false);}
  };
  const removePerson=async(x:{p:PersonElement;where:string|null})=>{
+  if(elementLocked(elements,x.p.id)){
+   alert('El elemento está bloqueado.');
+   return;
+  }
   const msg=x.where
-   ?`${x.p.name} está asignada a ${x.where}.\n\n"Eliminar persona" la quita del proyecto y de esta composición. ¿Continuar?`
-   :`¿Eliminar a ${x.p.name} del proyecto? Ya no aparecerá en esta pieza.`;
+   ?`${x.p.name} está asignada a ${x.where}.\n\n¿Quitar a ${x.p.name} de este proyecto y de esta composición?`
+   :`¿Quitar a ${x.p.name} del proyecto actual?`;
   if(!window.confirm(msg))return;
   try{
-   await api.deletePerson(x.p.personId);
+   await api.deletePerson(x.p.personId, projectId);
    removePersonFromProject(x.p.id);
    onDeleted?.(x.p.personId);
-  }catch(e:any){alert(e.message||'No se pudo eliminar la persona');}
+  }catch(e:any){alert(e.message||'No se pudo quitar la persona');}
  };
  const item=(x:{p:PersonElement;where:string|null})=>(
   <div key={x.p.id} className={`pp-item ${selectedId===x.p.id?'sel':''}`}>
@@ -59,7 +63,7 @@ export default function PersonPanel({onDeleted}:{onDeleted?:(personId:number)=>v
     <b>{x.p.name}</b>
     <small>{x.where?x.where:`Libre · ${x.p.positionType}`}</small>
    </button>
-   <button className="pp-del" title={`Eliminar a ${x.p.name} del proyecto`} onClick={()=>removePerson(x)}>🗑</button>
+   <button className="pp-del" title={`Quitar a ${x.p.name} del proyecto`} onClick={()=>removePerson(x)}>🗑</button>
   </div>
  );
  return (
@@ -78,7 +82,7 @@ export default function PersonPanel({onDeleted}:{onDeleted?:(personId:number)=>v
     </div>
    )}
    <input className="pp-search" value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar persona o destino..."/>
-   {persons.length===0&&<p className="hint">Aún no hay personas en el lienzo. Usa «＋ Persona» o arrastra desde «Personas de la pieza».</p>}
+   {persons.length===0&&<p className="hint">Aún no hay personas en el lienzo. Usa «＋ Persona» o personas de la pieza.</p>}
    {persons.length>0&&filtered.length===0&&<p className="hint">Sin coincidencias.</p>}
    <div className="pp-group">
     <h4>Sin asignar ({free.length})</h4>

@@ -186,13 +186,26 @@ def rename_person(pid:int,p:PersonPatch,db:Session=Depends(get_db)):
     return obj(x)
 
 @router.delete('/people/{pid}')
-def delete_person(pid:int,db:Session=Depends(get_db)):
+def delete_person(pid:int,project_id:int|None=None,db:Session=Depends(get_db)):
     x=db.get(Person,pid)
     if not x:
         raise HTTPException(404,'Persona no encontrada')
+    if project_id is not None:
+        p=db.get(Project,project_id)
+        if not p:
+            raise HTTPException(404,f'El proyecto {project_id} no existe.')
+        project_song_ids=[s.id for s in p.songs]
+        removed_count=0
+        if project_song_ids:
+            assignments=db.scalars(select(SongAssignment).where(SongAssignment.person_id==pid,SongAssignment.song_id.in_(project_song_ids))).all()
+            removed_count=len(assignments)
+            for a in assignments:
+                db.delete(a)
+            db.commit()
+        return {'deleted':False,'id':pid,'project_id':project_id,'assignments_removed':removed_count}
     # Person is global. Never cascade a visual removal into song history.
     if db.scalar(select(SongAssignment.id).where(SongAssignment.person_id==pid).limit(1)) is not None:
-        raise HTTPException(409,'La persona participa en canciones. Ret?rala de la composici?n sin borrar el cat?logo.')
+        raise HTTPException(409,'La persona participa en canciones. Retírala de la composición sin borrar el catálogo.')
     for composition in db.scalars(select(Composition)).all():
         data=composition.data if isinstance(composition.data,dict) else {}
         for element in data.get('elements',[]) or []:
@@ -202,7 +215,7 @@ def delete_person(pid:int,db:Session=Depends(get_db)):
             referenced=referenced or any(isinstance(slot,dict) and str(slot.get('personId'))==str(pid)
                                         for slot in element.get('positions',[]) or [])
             if referenced:
-                raise HTTPException(409,'La persona est? referenciada en composiciones guardadas.')
+                raise HTTPException(409,'La persona está referenciada en composiciones guardadas.')
     db.delete(x)
     try:
         db.commit()

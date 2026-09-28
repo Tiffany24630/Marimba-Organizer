@@ -1,4 +1,4 @@
-import {useEffect,useState} from 'react';
+import {useEffect,useState,useRef} from 'react';
 import {api} from '../lib/api';
 import {useComposition} from '../store/composition';
 import CanvasEditor from '../components/CanvasEditor';
@@ -80,12 +80,16 @@ export default function Project({id,onBack}:{id:number;onBack:()=>void}){
   return()=>{alive=false};
  },[id,setElements,select]);
 
+ const saveRef=useRef<()=>void>();
+ saveRef.current=save;
+
  useEffect(()=>{
   const onKey=(e:KeyboardEvent)=>{
    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){
     e.preventDefault();
-    if(!data||openSongId==null)return;
-    if(isDirty) save();
+    if(useComposition.getState().isDirty){
+     saveRef.current?.();
+    }
    }
   };
   window.addEventListener('keydown',onKey);
@@ -100,11 +104,11 @@ export default function Project({id,onBack}:{id:number;onBack:()=>void}){
   };
   window.addEventListener('beforeunload',handleBeforeUnload);
   return()=>window.removeEventListener('beforeunload',handleBeforeUnload);
-  },[isDirty]);
+ },[isDirty]);
  useEffect(()=>{
   if(!isResizing)return;
   const onMove=(e:MouseEvent|TouchEvent)=>{
-   const el=document.getElementById('app')?.querySelector('.workspace') as HTMLElement|null;
+   const el=(document.getElementById('root')||document)?.querySelector('.workspace') as HTMLElement|null;
    if(!el)return;
    const rect=el.getBoundingClientRect();
    const x=(e instanceof TouchEvent ? e.touches?.[0]?.clientX : e.clientX)-rect.left;
@@ -506,7 +510,7 @@ export default function Project({id,onBack}:{id:number;onBack:()=>void}){
           <b>{onCanvas?'✓ ':''}{a.person}</b><small>{a.position}</small>
          </button>);
        })}
-       <PersonPanel/>
+       <PersonPanel projectId={id}/>
       </div>
      )}
      {sideTab==='marimbas'&&(

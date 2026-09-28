@@ -4,7 +4,7 @@ export const api={
  projects:()=>req('/projects'), project:(id:number)=>req(`/projects/${id}`), people:()=>req('/people'),
  createPerson:(name:string)=>req('/people',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})}),
  renamePerson:(id:number,name:string)=>req(`/people/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})}),
- deletePerson:(id:number)=>req(`/people/${id}`,{method:'DELETE'}),
+ deletePerson:(id:number,projectId?:number)=>req(`/people/${id}${projectId?`?project_id=${projectId}`:''}`,{method:'DELETE'}),
  positions:()=>req('/positions'), templates:()=>req('/marimba-templates'),
  preview:(file:File)=>{const f=new FormData();f.append('file',file);return req('/imports/preview',{method:'POST',body:f})},
  confirm:(payload:any)=>req('/imports/confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),
