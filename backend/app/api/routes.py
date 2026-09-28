@@ -185,44 +185,112 @@ def rename_person(pid:int,p:PersonPatch,db:Session=Depends(get_db)):
     db.refresh(x)
     return obj(x)
 
+def _composition_references_person(data,pid):
+    """True when the person is visually represented inside a stored composition."""
+    if not isinstance(data,dict):
+        return False
+    for element in data.get('elements',[]) or []:
+        if not isinstance(element,dict):
+            continue
+        if element.get('type')=='person' and str(element.get('personId'))==str(pid):
+            return True
+        for slot in element.get('positions',[]) or []:
+            if isinstance(slot,dict) and str(slot.get('personId'))==str(pid):
+                return True
+    return False
+
+def _strip_person_from_composition(data,pid):
+    """Drop the visual representation of a person from composition data. Idempotent."""
+    if not isinstance(data,dict) or not isinstance(data.get('elements'),list):
+        return data,False,0
+    removed_people=0
+    freed_slots=0
+    kept=[]
+    for element in data['elements']:
+        if isinstance(element,dict) and element.get('type')=='person' and str(element.get('personId'))==str(pid):
+            removed_people+=1
+            continue
+        if isinstance(element,dict) and isinstance(element.get('positions'),list):
+            slots=[]
+            for slot in element['positions']:
+                if isinstance(slot,dict) and slot.get('personId') is not None and str(slot.get('personId'))==str(pid):
+                    slots.append({**slot,'personId':None})
+                    freed_slots+=1
+                else:
+                    slots.append(slot)
+            kept.append({**element,'positions':slots})
+            continue
+        kept.append(element)
+    if not removed_people and not freed_slots:
+        return data,False,0
+    return {**data,'elements':kept},True,freed_slots
+
 @router.delete('/people/{pid}')
-def delete_person(pid:int,project_id:int|None=None,db:Session=Depends(get_db)):
+def delete_person(pid:int,project_id:int|None=None,scope:str='composition',db:Session=Depends(get_db)):
+    """
+    Removal of a person is ALWAYS explicitly scoped. The schema has no direct
+    person<->project table: project membership is expressed by the ``SongAssignment``
+    rows of the project's songs, and the visual representation lives in
+    ``Composition.data``.
+
+    * ``project_id`` omitted -> catalogue deletion. Guarded with 409 whenever the
+      person has assignments or is referenced by a saved composition, so a secondary
+      path can never destroy historical data.
+    * ``project_id`` + ``scope="composition"`` (default) -> only the visual
+      representation is removed from the project's stored compositions. The
+      ``people`` row and EVERY ``SongAssignment`` are preserved.
+    * ``project_id`` + ``scope="project"`` -> additionally deletes the
+      ``SongAssignment`` rows of that person inside the songs of this project (this is
+      the only persistent person<->project link available). The ``people`` row and all
+      other projects' assignments are preserved.
+    """
     x=db.get(Person,pid)
     if not x:
         raise HTTPException(404,'Persona no encontrada')
-    if project_id is not None:
-        p=db.get(Project,project_id)
-        if not p:
-            raise HTTPException(404,f'El proyecto {project_id} no existe.')
+
+    if project_id is None:
+        if scope not in ('composition','catalog'):
+            raise HTTPException(400,"Sin project_id el único ámbito válido es 'catalog'.")
+        if db.scalar(select(SongAssignment.id).where(SongAssignment.person_id==pid).limit(1)) is not None:
+            raise HTTPException(409,'La persona participa en canciones. Retírala primero del proyecto o de la composición; el catálogo no se borra.')
+        for composition in db.scalars(select(Composition)).all():
+            if _composition_references_person(composition.data,pid):
+                raise HTTPException(409,'La persona está referenciada en composiciones guardadas. Quítala primero de la composición.')
+        db.delete(x)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(409,'La persona tiene referencias y no puede eliminarse.')
+        return {'deleted':True,'scope':'catalog','id':pid,'assignments_removed':0,'compositions_updated':0}
+
+    p=db.get(Project,project_id)
+    if not p:
+        raise HTTPException(404,f'El proyecto {project_id} no existe.')
+    if scope not in ('composition','project'):
+        raise HTTPException(400,f"Ámbito '{scope}' no válido con project_id. Usa 'composition' o 'project'.")
+
+    assignments_removed=0
+    if scope=='project':
         project_song_ids=[s.id for s in p.songs]
-        removed_count=0
         if project_song_ids:
             assignments=db.scalars(select(SongAssignment).where(SongAssignment.person_id==pid,SongAssignment.song_id.in_(project_song_ids))).all()
-            removed_count=len(assignments)
+            assignments_removed=len(assignments)
             for a in assignments:
                 db.delete(a)
-            db.commit()
-        return {'deleted':False,'id':pid,'project_id':project_id,'assignments_removed':removed_count}
-    # Person is global. Never cascade a visual removal into song history.
-    if db.scalar(select(SongAssignment.id).where(SongAssignment.person_id==pid).limit(1)) is not None:
-        raise HTTPException(409,'La persona participa en canciones. Retírala de la composición sin borrar el catálogo.')
-    for composition in db.scalars(select(Composition)).all():
-        data=composition.data if isinstance(composition.data,dict) else {}
-        for element in data.get('elements',[]) or []:
-            if not isinstance(element,dict):
-                continue
-            referenced=element.get('type')=='person' and str(element.get('personId'))==str(pid)
-            referenced=referenced or any(isinstance(slot,dict) and str(slot.get('personId'))==str(pid)
-                                        for slot in element.get('positions',[]) or [])
-            if referenced:
-                raise HTTPException(409,'La persona está referenciada en composiciones guardadas.')
-    db.delete(x)
-    try:
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(409,'La persona tiene referencias y no puede eliminarse.')
-    return {'deleted':True,'id':pid,'assignments_removed':0}
+
+    compositions_updated=0
+    freed_slots=0
+    for composition in p.compositions:
+        new_data,changed,freed=_strip_person_from_composition(composition.data,pid)
+        if changed:
+            composition.data=new_data
+            compositions_updated+=1
+            freed_slots+=freed
+    db.commit()
+    return {'deleted':False,'scope':scope,'id':pid,'project_id':project_id,
+            'assignments_removed':assignments_removed,'compositions_updated':compositions_updated,
+            'freed_slots':freed_slots}
 
 @router.get('/positions')
 def positions(db:Session=Depends(get_db)): 

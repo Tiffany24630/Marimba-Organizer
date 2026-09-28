@@ -1,12 +1,13 @@
-import {useEffect,useState,useRef} from 'react';
+import {useEffect,useState,useRef,useCallback} from 'react';
 import {api} from '../lib/api';
 import {useComposition} from '../store/composition';
+import {clientToWorld} from '../lib/layout';
 import CanvasEditor from '../components/CanvasEditor';
 import Inspector from '../components/Inspector';
 import SuggestionsPanel from '../components/SuggestionsPanel';
 import DistributionPanel from '../components/DistributionPanel';
 import RequirementsPanel from '../components/RequirementsPanel';
-import PersonPanel from '../components/PersonPanel';
+import PersonPanel,{DRAG_PERSON_MIME} from '../components/PersonPanel';
 import MarimbaPanel from '../components/MarimbaPanel';
 import type {Song,Template} from '../types';
 
@@ -52,6 +53,7 @@ export default function Project({id,onBack}:{id:number;onBack:()=>void}){
   addPerson,
   addMarimba,
   addCustomMarimba,
+  dropPerson,
   undo,
   redo,
   history,
@@ -80,8 +82,30 @@ export default function Project({id,onBack}:{id:number;onBack:()=>void}){
   return()=>{alive=false};
  },[id,setElements,select]);
 
- const saveRef=useRef<()=>void>();
- saveRef.current=save;
+ // The Ctrl+S listener is registered once, but the indirection is refreshed on every
+ // render (see the effect right below `save`) so it never captures a stale closure.
+ const saveRef=useRef<(()=>void)|undefined>(undefined);
+const [dropActive,setDropActive]=useState(false);
+const onDragOver=useCallback((ev:React.DragEvent<HTMLElement>)=>{
+ if(!Array.from(ev.dataTransfer.types).includes(DRAG_PERSON_MIME))return;
+ ev.preventDefault();
+ ev.dataTransfer.dropEffect='move';
+ setDropActive(true);
+},[]);
+const onDragLeave=useCallback((ev:React.DragEvent<HTMLElement>)=>{
+ if(ev.currentTarget.contains(ev.relatedTarget as Node))return;
+ setDropActive(false);
+},[]);
+const onDrop=useCallback((ev:React.DragEvent<HTMLElement>)=>{
+ const personElId=ev.dataTransfer.getData(DRAG_PERSON_MIME);
+ setDropActive(false);
+ if(!personElId)return;
+ ev.preventDefault();
+ const rect=ev.currentTarget.getBoundingClientRect();
+ const world=clientToWorld(ev.clientX,ev.clientY,{left:rect.left,top:rect.top});
+ dropPerson(personElId,world,{x:world.x,y:world.y,rotation:0});
+},[dropPerson]);
+
 
  useEffect(()=>{
   const onKey=(e:KeyboardEvent)=>{
@@ -205,6 +229,9 @@ export default function Project({id,onBack}:{id:number;onBack:()=>void}){
   try{
    const name=compName.trim()||song?.name||'Composición';
    const payload={project_id:id,song_id:openSongId,name,width:1600,height:900,data:{elements}};
+   // Pin the exact payload that reached the API: anything typed while the request was
+   // in flight must stay dirty instead of being silently marked as saved.
+   const savedElements=elements;
    if(compId){
     const updated=await api.updateComposition(compId,payload);
     setData((d:any)=>({...d,compositions:(d.compositions||[]).map((c:any)=>c.id===compId?updated:c)}));
@@ -214,7 +241,7 @@ export default function Project({id,onBack}:{id:number;onBack:()=>void}){
     setData((d:any)=>({...d,compositions:[...(d?.compositions||[]),created]}));
    }
    setCompName(name);
-   markClean();
+   markClean(savedElements);
    setSaveStatus('saved');
    window.setTimeout(()=>setSaveStatus('idle'),3000);
    reloadSongs(id);
@@ -223,6 +250,11 @@ export default function Project({id,onBack}:{id:number;onBack:()=>void}){
    alert(e.message);
   }
  };
+// Keep the Ctrl+S indirection pointing at the CURRENT save closure. Declared here (not
+// in the component body) so `save` is already initialised: assigning it earlier was a
+// temporal-dead-zone crash that took the whole editor down on every render.
+useEffect(()=>{saveRef.current=save;});
+
 
  const saveAs=async()=>{
   if(!data||openSongId==null)return;
@@ -486,7 +518,7 @@ export default function Project({id,onBack}:{id:number;onBack:()=>void}){
     </div>
    </header>
 
-   <div className="workspace" style={{gridTemplateColumns:`${sidebarW}px 6px minmax(0,1fr)`}}>
+   <div className="workspace" style={{'--side-w':`${sidebarW}px`} as React.CSSProperties}>
     <aside className="sidebar" style={{width:sidebarW,maxWidth:sidebarW,minWidth:0}}>
      <div className="sidebar-head">
       <div className="side-tabs" role="tablist">
@@ -549,7 +581,10 @@ export default function Project({id,onBack}:{id:number;onBack:()=>void}){
      )}
     </aside>
     <div className={`splitter ${isResizing?'dragging':''}`} onMouseDown={()=>setIsResizing(true)} onTouchStart={()=>setIsResizing(true)} aria-hidden="true"></div>
-    <section className="canvas-panel"><CanvasEditor/></section>
+    <section className="canvas-panel" onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+    <div className={`dropzone ${dropActive?'active':''}`} aria-hidden={!dropActive}>Suelta para asignar a un puesto</div>
+    <CanvasEditor/>
+   </section>
     <Inspector detectedPositions={detected} drawerOpen={showInspector} onDrawerToggle={setShowInspector}/>
    </div>
   </main>

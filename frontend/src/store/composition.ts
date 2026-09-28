@@ -4,6 +4,9 @@ import {MARIMBA_DEFAULT,PERSON_H,PERSON_W,nearestSlot,slotCenter,slotRect,worldT
 
 export const uid=()=>Math.random().toString(36).slice(2)+Date.now();
 
+/** Reference to a physical slot of a marimba instance (UX-2.5 independent slot selection). */
+export type SlotRef={marimbaId:string;positionId:string};
+
 function num(v:unknown,d:number){const n=Number(v);return Number.isFinite(n)?n:d;}
 
 export function normalizeElement(raw:any):Element|null{
@@ -79,6 +82,29 @@ function cloneEls(els:Element[]):Element[]{
  return JSON.parse(JSON.stringify(els));
 }
 
+const sig=(els:Element[])=>JSON.stringify(els);
+
+/**
+ * One logical undo step for a COMPOSITION-only operation.
+ * Pushes exactly one snapshot, and nothing at all when the operation is a no-op
+ * (so a cancelled interaction never pollutes the history nor the dirty flag).
+ */
+function step(s:State,els:Element[],extra?:Partial<State>):Partial<State>{
+ if(sig(els)===sig(s.elements))return {...(extra||{}),elements:s.elements};
+ return {history:[...s.history.slice(-29),cloneEls(s.elements)],future:[],elements:els,isDirty:true,...extra};
+}
+
+/**
+ * Applies an already-persisted GLOBAL change (Person row or SongAssignment rows).
+ * The composition history intentionally does not record it, so undo never pretends
+ * to revert a backend write. The composition is still marked dirty because the
+ * visual representation changed and must be saved.
+ */
+function committed(s:State,els:Element[],extra?:Partial<State>):Partial<State>{
+ if(sig(els)===sig(s.elements))return {...(extra||{}),elements:s.elements};
+ return {future:[],elements:els,isDirty:true,...extra};
+}
+
 export function compatiblePosition(a:string,b:string){
  return a.trim().normalize('NFKC').toLocaleLowerCase()===b.trim().normalize('NFKC').toLocaleLowerCase();
 }
@@ -107,6 +133,7 @@ type Geometry={x:number;y:number;rotation:number;scaleX:number;scaleY:number};
 type State={
  elements:Element[];
  selectedId:string|null;
+ selectedSlot:SlotRef|null;
  focusId:string|null;
  history:Element[][];
  future:Element[][];
@@ -114,11 +141,13 @@ type State={
  savedSig:string;
  setElements:(raw:unknown)=>void;
  select:(id:string|null)=>void;
+ selectSlot:(slot:SlotRef|null)=>void;
  focus:(id:string)=>void;
  clearFocus:()=>void;
- markClean:()=>void;
+ markClean:(saved?:Element[])=>void;
  markDirty:()=>void;
  recordHistory:()=>void;
+ endGesture:()=>void;
  undo:()=>void;
  redo:()=>void;
  toggleLock:(id:string)=>void;
@@ -126,7 +155,8 @@ type State={
  addMarimba:(m:{name:string,positions:string[]})=>void;
  addCustomMarimba:(name?:string)=>void;
  update:(id:string,patch:Partial<PersonElement>&Partial<MarimbaElement>)=>void;
- renamePerson:(personElId:string,name:string)=>void;
+ createPersonElement:(p:{personId:number,name:string,positionType?:string})=>string|null;
+ renamePerson:(personElId:string,name:string)=>boolean;
  removePersonFromProject:(personElId:string)=>void;
  remove:(id:string)=>void;
  clear:()=>void;
@@ -145,6 +175,7 @@ type State={
 export const useComposition=create<State>((set)=>({
  elements:[],
  selectedId:null,
+ selectedSlot:null,
  focusId:null,
  history:[],
  future:[],
@@ -152,18 +183,32 @@ export const useComposition=create<State>((set)=>({
  savedSig:'',
  setElements:raw=>{
   const els=(Array.isArray(raw)?raw:[]).map(normalizeElement).filter((e):e is Element=>!!e);
-  return set({elements:els,selectedId:null,history:[],future:[],isDirty:false,savedSig:JSON.stringify(els)});
+  return set({elements:els,selectedId:null,selectedSlot:null,history:[],future:[],isDirty:false,savedSig:JSON.stringify(els)});
  },
- select:id=>set({selectedId:id}),
- focus:id=>set({selectedId:id,focusId:id}),
+ select:id=>set({selectedId:id,selectedSlot:null}),
+ selectSlot:slot=>set({selectedSlot:slot,selectedId:null}),
+ focus:id=>set({selectedId:id,focusId:id,selectedSlot:null}),
  clearFocus:()=>set({focusId:null}),
-  markClean:()=>set(s=>({isDirty:false,savedSig:JSON.stringify(s.elements)})),
+  // `saved` pins the exact payload that reached the API: anything typed while the
+  // request was in flight stays dirty instead of being silently marked as saved.
+  markClean:(saved)=>set(s=>{
+   const target=JSON.stringify(saved??s.elements);
+   return {savedSig:target,isDirty:JSON.stringify(s.elements)!==target};
+  }),
  markDirty:()=>set({isDirty:true}),
+  // Pre-gesture snapshot (used while a marimba is dragged/transformed live). It does
+  // not mark dirty on its own: only the resulting mutation may do that.
  recordHistory:()=>set(s=>({
   history:[...s.history.slice(-29),cloneEls(s.elements)],
   future:[],
-  isDirty:true,
  })),
+  // Drops the pre-gesture snapshot when the gesture produced no real change, so undo
+  // never replays a no-op and a cancelled drag never dirties the composition.
+ endGesture:()=>set(s=>{
+  const last=s.history[s.history.length-1];
+  if(!last||JSON.stringify(last)!==JSON.stringify(s.elements))return {};
+  return {history:s.history.slice(0,-1)};
+ }),
  undo:()=>set(s=>{
   if(!s.history.length)return {};
   const prev=s.history[s.history.length-1];
@@ -192,26 +237,15 @@ export const useComposition=create<State>((set)=>({
   const el=s.elements.find(e=>e.id===id);
   if(!el)return {};
   const newLocked=!el.locked;
-  return {
-   history:[...s.history.slice(-29),cloneEls(s.elements)],
-   future:[],
-   elements:s.elements.map(e=>e.id===id?{...e,locked:newLocked} as Element:e),
-   isDirty:true,
-  };
+  return step(s,s.elements.map(e=>e.id===id?{...e,locked:newLocked} as Element:e));
  }),
  addPerson:p=>set(s=>{
   const existing=s.elements.find(e=>e.type==='person'&&e.personId===p.id);
-  if(existing)return {selectedId:existing.id};
+  if(existing)return {selectedId:existing.id,selectedSlot:null};
   const el:PersonElement={id:uid(),type:'person',name:p.name,personId:p.id,positionType:p.position||'Primera',
    x:80+Math.random()*220,y:70+Math.random()*160,width:PERSON_W,height:PERSON_H,
    rotation:0,scaleX:1,scaleY:1,locked:false,marimbaId:null,marimbaPositionId:null};
-  return {
-   history:[...s.history.slice(-29),cloneEls(s.elements)],
-   future:[],
-   elements:[...s.elements,el],
-   selectedId:el.id,
-   isDirty:true,
-  };
+  return step(s,[...s.elements,el],{selectedId:el.id,selectedSlot:null});
  }),
  addMarimba:m=>set(s=>{
   const n=Math.max(m.positions.length,1);
@@ -219,61 +253,54 @@ export const useComposition=create<State>((set)=>({
   const el:MarimbaElement={id:uid(),type:'marimba',name:m.name,x:260+Math.random()*160,y:200+Math.random()*120,
    width,height:MARIMBA_DEFAULT.height,rotation:0,scaleX:1,scaleY:1,locked:false,
    positions:m.positions.map(t=>({id:uid(),type:t,personId:null}))};
-  return {
-   history:[...s.history.slice(-29),cloneEls(s.elements)],
-   future:[],
-   elements:[...s.elements,el],
-   selectedId:el.id,
-   isDirty:true,
-  };
+  return step(s,[...s.elements,el],{selectedId:el.id,selectedSlot:null});
  }),
  addCustomMarimba:name=>set(s=>{
   const el:MarimbaElement={id:uid(),type:'marimba',name:name||'Marimba personalizada',x:300+Math.random()*160,y:220+Math.random()*120,
    width:MARIMBA_DEFAULT.width,height:MARIMBA_DEFAULT.height,rotation:0,scaleX:1,scaleY:1,locked:false,
    positions:[{id:uid(),type:'Primera',personId:null}]};
-  return {
-   history:[...s.history.slice(-29),cloneEls(s.elements)],
-   future:[],
-   elements:[...s.elements,el],
-   selectedId:el.id,
-   isDirty:true,
-  };
+  return step(s,[...s.elements,el],{selectedId:el.id,selectedSlot:null});
  }),
  update:(id,patch)=>set(s=>{
   const el=s.elements.find(e=>e.id===id);
   if(!el)return {};
   if(elementLocked(s.elements,id))return {};
   if(Object.entries(patch).every(([key,value])=>(el as any)[key]===value))return {};
-  return {
-   history:[...s.history.slice(-29),cloneEls(s.elements)],
-   future:[],
-   elements:s.elements.map(e=>e.id===id?{...e,...patch} as Element:e),
-   isDirty:true,
-  };
+  return step(s,s.elements.map(e=>e.id===id?{...e,...patch} as Element:e));
  }),
- renamePerson:(personElId,name)=>set(s=>{
-  const pe=s.elements.find(e=>e.id===personElId);
-  if(!pe||pe.type!=='person')return {};
+ // GLOBAL write: PATCH /people/{id} already succeeded, so the catalog change is a fact.
+ // It is deliberately kept OUT of the composition history: undo must never pretend to
+ // revert a backend write. The visual name still needs saving -> composition goes dirty.
+ renamePerson:(personElId,name)=>{
   const n=name.trim();
-  if(!n)return {};
-  return {
-   history:[...s.history.slice(-29),cloneEls(s.elements)],
-   future:[],
-   elements:s.elements.map(e=>e.type==='person'&&e.personId===pe.personId?{...e,name:n}:e),
-   isDirty:true,
-  };
- }),
+  if(!n)return false;
+  let applied=false;
+  set(s=>{
+   const pe=s.elements.find(e=>e.id===personElId);
+   if(!pe||pe.type!=='person'||elementLocked(s.elements,personElId))return {};
+   const els=s.elements.map(e=>e.type==='person'&&e.personId===pe.personId?{...e,name:n}:e);
+   if(sig(els)===sig(s.elements))return {};
+   applied=true;
+   return committed(s,els);
+  });
+  return applied;
+ },
+ // GLOBAL write: POST /people already created the catalog row. Same rule as above.
+ createPersonElement:p=>{
+  const el:PersonElement={id:uid(),type:'person',name:p.name,personId:p.personId,positionType:p.positionType||'Primera',
+   x:80+Math.random()*220,y:70+Math.random()*160,width:PERSON_W,height:PERSON_H,
+   rotation:0,scaleX:1,scaleY:1,locked:false,marimbaId:null,marimbaPositionId:null};
+  set(s=>committed(s,[...s.elements,el],{selectedId:el.id,selectedSlot:null}));
+  return el.id;
+ },
+ // GLOBAL write: the project-scoped DELETE already removed the SongAssignment rows.
+ // Only the visual representation is dropped here, again without a fake undo step.
  removePersonFromProject:(personElId)=>set(s=>{
   const pe=s.elements.find(e=>e.id===personElId);
   if(!pe||pe.type!=='person'||elementLocked(s.elements,personElId))return {};
-  return {
-   history:[...s.history.slice(-29),cloneEls(s.elements)],
-   future:[],
-   elements:s.elements.filter(e=>!(e.type==='person'&&e.personId===pe.personId))
-    .map(e=>e.type==='marimba'?{...e,positions:e.positions.map(pp=>pp.personId===pe.personId?{...pp,personId:null}:pp)}:e),
-   selectedId:null,
-   isDirty:true,
-  };
+  return committed(s,s.elements.filter(e=>!(e.type==='person'&&e.personId===pe.personId))
+   .map(e=>e.type==='marimba'?{...e,positions:e.positions.map(pp=>pp.personId===pe.personId?{...pp,personId:null}:pp)}:e),
+   {selectedId:null,selectedSlot:null});
  }),
  remove:id=>set(s=>{
   const el=s.elements.find(e=>e.id===id);
@@ -281,31 +308,13 @@ export const useComposition=create<State>((set)=>({
   if(el.type==='person'){
    const elements=s.elements.filter(e=>e.id!==id).map(e=>e.type==='marimba'
     ?{...e,positions:e.positions.map(p=>p.personId===el.personId?{...p,personId:null}:p)}:e);
-   return {
-    history:[...s.history.slice(-29),cloneEls(s.elements)],
-    future:[],
-    elements,
-    selectedId:null,
-    isDirty:true,
-   };
+   return step(s,elements,{selectedId:null,selectedSlot:null});
   }
   const elements=s.elements.filter(e=>e.id!==id).map(e=>e.type==='person'&&e.marimbaId===id
    ?{...e,marimbaId:null,marimbaPositionId:null}:e);
-  return {
-   history:[...s.history.slice(-29),cloneEls(s.elements)],
-   future:[],
-   elements,
-   selectedId:null,
-   isDirty:true,
-  };
+  return step(s,elements,{selectedId:null,selectedSlot:null});
  }),
- clear:()=>set(s=>({
-  history:[...s.history.slice(-29),cloneEls(s.elements)],
-  future:[],
-  elements:[],
-  selectedId:null,
-  isDirty:true,
- })),
+ clear:()=>set({elements:[],history:[],future:[],isDirty:false,selectedId:null,selectedSlot:null,savedSig:''}),
  addPosition:(marimbaId,type)=>set(s=>{
   const m=s.elements.find(e=>e.id===marimbaId);
   if(!m||m.type!=='marimba'||m.locked)return {};
@@ -316,12 +325,7 @@ export const useComposition=create<State>((set)=>({
    const mm={...e,positions,width:Math.max(e.width,needed)};
    return withRepositioned(s.elements.map(x=>x.id===marimbaId?mm:x),mm).find(x=>x.id===marimbaId)??mm;
   });
-  return {
-   history:[...s.history.slice(-29),cloneEls(s.elements)],
-   future:[],
-   elements:els,
-   isDirty:true,
-  };
+  return step(s,els);
  }),
  removePosition:(marimbaId,positionId)=>set(s=>{
   const mOld=s.elements.find(e=>e.id===marimbaId);
@@ -337,23 +341,13 @@ export const useComposition=create<State>((set)=>({
     x:c&&r?c.x-r.width/2:e.x,y:c&&r?c.y-r.height/2:e.y};
    return e;
   });
-  return {
-   history:[...s.history.slice(-29),cloneEls(s.elements)],
-   future:[],
-   elements:withRepositioned(freed,stripped),
-   isDirty:true,
-  };
+  return step(s,withRepositioned(freed,stripped));
  }),
  setPositionType:(marimbaId,positionId,type)=>set(s=>{
   const m=s.elements.find(e=>e.id===marimbaId);
   if(!m||m.type!=='marimba'||m.locked)return {};
-  return {
-   history:[...s.history.slice(-29),cloneEls(s.elements)],
-   future:[],
-   elements:s.elements.map(e=>e.type==='marimba'&&e.id===marimbaId
-    ?{...e,positions:e.positions.map(p=>p.id===positionId?{...p,type:type.trim()||p.type}:p)}:e),
-   isDirty:true,
-  };
+  return step(s,s.elements.map(e=>e.type==='marimba'&&e.id===marimbaId
+   ?{...e,positions:e.positions.map(p=>p.id===positionId?{...p,type:type.trim()||p.type}:p)}:e));
  }),
  setPersonPositionType:(personElId,type)=>set(s=>{
   const pe=s.elements.find(e=>e.id===personElId);
@@ -363,15 +357,10 @@ export const useComposition=create<State>((set)=>({
   const m=s.elements.find((e):e is MarimbaElement=>e.id===pe.marimbaId&&e.type==='marimba');
   const slot=m?.positions.find(p=>p.id===pe.marimbaPositionId);
   if(slot&&!compatiblePosition(t,slot.type))return {};
-  return {
-   history:[...s.history.slice(-29),cloneEls(s.elements)],
-   future:[],
-   elements:s.elements.map(el=>{
-    if(el.id===personElId&&el.type==='person')return {...el,positionType:t};
-    return el;
-   }),
-   isDirty:true,
-  };
+  return step(s,s.elements.map(el=>{
+   if(el.id===personElId&&el.type==='person')return {...el,positionType:t};
+   return el;
+  }));
  }),
  movePosition:(marimbaId,positionId,dir)=>set(s=>{
   const m=s.elements.find(e=>e.id===marimbaId);
@@ -382,39 +371,26 @@ export const useComposition=create<State>((set)=>({
   const positions=[...m.positions];
   [positions[i],positions[j]]=[positions[j],positions[i]];
   const mm={...m,positions};
-  return {
-   history:[...s.history.slice(-29),cloneEls(s.elements)],
-   future:[],
-   elements:withRepositioned(s.elements.map(e=>e.id===marimbaId?mm:e),mm),
-   isDirty:true,
-  };
+  return step(s,withRepositioned(s.elements.map(e=>e.id===marimbaId?mm:e),mm));
  }),
  assign:(personElId,marimbaId,positionId)=>set(s=>{
   const pe=s.elements.find(e=>e.id===personElId);
   const m=s.elements.find(e=>e.id===marimbaId);
   if(assignmentError(s.elements,personElId,marimbaId,positionId))return {};
   if(pe?.type==='person'&&pe.marimbaId===marimbaId&&pe.marimbaPositionId===positionId)return {};
-  return {
-   history:[...s.history.slice(-29),cloneEls(s.elements)],
-   future:[],
-   elements:applyAssign(s.elements,personElId,marimbaId,positionId),
-   isDirty:true,
-  };
+  return step(s,applyAssign(s.elements,personElId,marimbaId,positionId));
  }),
  unassign:(personElId,at)=>set(s=>{
   const pe=s.elements.find(e=>e.id===personElId);
   if(!pe||pe.type!=='person'||elementLocked(s.elements,personElId)||!pe.marimbaId)return {};
-  return {
-   history:[...s.history.slice(-29),cloneEls(s.elements)],
-   future:[],
-   elements:s.elements.map(el=>{
-    if(el.id===personElId)return {...el,marimbaId:null,marimbaPositionId:null,rotation:0,...(at?{x:at.x,y:at.y}:{})};
-    if(el.type==='marimba')return {...el,positions:el.positions.map(p=>p.personId===pe.personId?{...p,personId:null}:p)};
-    return el;
-   }),
-   isDirty:true,
-  };
+  return step(s,s.elements.map(el=>{
+   if(el.id===personElId)return {...el,marimbaId:null,marimbaPositionId:null,rotation:0,...(at?{x:at.x,y:at.y}:{})};
+   if(el.type==='marimba')return {...el,positions:el.positions.map(p=>p.personId===pe.personId?{...p,personId:null}:p)};
+   return el;
+  }));
  }),
+ // Person drags do NOT call recordHistory(): the store is only mutated here, so this
+ // single `step` IS the one logical undo step for move / assign / replace / release.
  dropPerson:(personElId,pointer,fallback)=>set(s=>{
   const pe=s.elements.find(e=>e.id===personElId);
   if(!pe||pe.type!=='person'||elementLocked(s.elements,personElId))return {};
@@ -430,24 +406,14 @@ export const useComposition=create<State>((set)=>({
     if(!posId)break;
     if(pe.marimbaId===m.id&&pe.marimbaPositionId===posId)return {};
     if(assignmentError(s.elements,personElId,m.id,posId))return {};
-    return {
-     history:[...s.history.slice(-29),cloneEls(s.elements)],
-     future:[],
-     elements:applyAssign(s.elements,personElId,m.id,posId),
-     isDirty:true,
-    };
+    return step(s,applyAssign(s.elements,personElId,m.id,posId));
    }
   }
-  return {
-   history:[...s.history.slice(-29),cloneEls(s.elements)],
-   future:[],
-   elements:s.elements.map(el=>{
-    if(el.id===personElId)return {...el,marimbaId:null,marimbaPositionId:null,rotation:fallback.rotation,x:fallback.x,y:fallback.y};
-    if(el.type==='marimba')return {...el,positions:el.positions.map(p=>p.personId===pe.personId?{...p,personId:null}:p)};
-    return el;
-   }),
-   isDirty:true,
-  };
+  return step(s,s.elements.map(el=>{
+   if(el.id===personElId)return {...el,marimbaId:null,marimbaPositionId:null,rotation:fallback.rotation,x:fallback.x,y:fallback.y};
+   if(el.type==='marimba')return {...el,positions:el.positions.map(p=>p.personId===pe.personId?{...p,personId:null}:p)};
+   return el;
+  }));
  }),
  marimbaDragged:(id,x,y)=>set(s=>{
   const m=s.elements.find(e=>e.id===id);
@@ -469,6 +435,8 @@ export const useComposition=create<State>((set)=>({
   const els=s.elements.map(e=>e.id===id&&e.type==='marimba'?{...e,...g}:e);
   const m=els.find(e=>e.id===id);
   if(!m||m.type!=='marimba')return {elements:els};
-  return {elements:withRepositioned(els,m),isDirty:true};
+  const positioned=withRepositioned(els,m);
+  if(JSON.stringify(positioned)===JSON.stringify(s.elements))return {};
+  return {elements:positioned,isDirty:true};
  }),
 }));

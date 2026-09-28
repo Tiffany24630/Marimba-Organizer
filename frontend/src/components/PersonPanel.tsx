@@ -3,13 +3,17 @@ import {api} from '../lib/api';
 import {useComposition, elementLocked} from '../store/composition';
 import type {MarimbaElement,PersonElement} from '../types';
 
-export default function PersonPanel({projectId, onDeleted}:{projectId?:number; onDeleted?:(personId:number)=>void}){
+export const DRAG_PERSON_MIME='application/x-marimba-person';
+
+export default function PersonPanel({projectId,onDeleted}:{projectId?:number;onDeleted?:(personId:number)=>void}){
  const elements=useComposition(s=>s.elements);
  const selectedId=useComposition(s=>s.selectedId);
- const select=useComposition(s=>s.select);
+ const selectedSlot=useComposition(s=>s.selectedSlot);
  const focus=useComposition(s=>s.focus);
- const renamePerson=useComposition(s=>s.renamePerson);
+ const createPersonElement=useComposition(s=>s.createPersonElement);
+ const removeFromComposition=useComposition(s=>s.remove);
  const removePersonFromProject=useComposition(s=>s.removePersonFromProject);
+ const assign=useComposition(s=>s.assign);
  const [q,setQ]=useState('');
  const [adding,setAdding]=useState(false);
  const [nName,setNName]=useState('');
@@ -17,6 +21,13 @@ export default function PersonPanel({projectId, onDeleted}:{projectId?:number; o
  const [busy,setBusy]=useState(false);
  const persons=elements.filter((e):e is PersonElement=>e.type==='person');
  const marimbas=elements.filter((e):e is MarimbaElement=>e.type==='marimba');
+ const slotLabel=(()=>{
+  if(!selectedSlot)return null;
+  const m=marimbas.find(x=>x.id===selectedSlot.marimbaId);
+  if(!m)return null;
+  const i=m.positions.findIndex(x=>x.id===selectedSlot.positionId);
+  return i<0?null:`${m.name} · p${i}`;
+ })();
  const rows=persons.map(p=>{
   const m=p.marimbaId?marimbas.find(x=>x.id===p.marimbaId&&x.type==='marimba'):undefined;
   const idx=m?m.positions.findIndex(x=>x.id===p.marimbaPositionId):-1;
@@ -31,41 +42,85 @@ export default function PersonPanel({projectId, onDeleted}:{projectId?:number; o
   const n=nName.trim();if(!n||busy)return;
   setBusy(true);
   try{
+   // GLOBAL write first: the catalog row exists before the composition shows it.
    const created=await api.createPerson(n);
-   const el:PersonElement={id:Math.random().toString(36).slice(2)+Date.now(),type:'person',name:created.name,personId:created.id,positionType:nPos.trim()||'Primera',
-    x:80+Math.random()*220,y:70+Math.random()*160,width:150,height:44,rotation:0,scaleX:1,scaleY:1,locked:false,marimbaId:null,marimbaPositionId:null};
-   useComposition.setState(s=>({
-    history:[...s.history.slice(-29),JSON.parse(JSON.stringify(s.elements))],
-    future:[],elements:[...s.elements,el],selectedId:el.id,isDirty:true}));
+   createPersonElement({personId:created.id,name:created.name,positionType:nPos.trim()||'Primera'});
    setNName('');setAdding(false);
   }catch(e:any){alert(e.message||'No se pudo crear la persona');}
   finally{setBusy(false);}
  };
- const removePerson=async(x:{p:PersonElement;where:string|null})=>{
+ // COMPOSITION-ONLY: drops the visual representation, one undo step, NO api call, so
+ // neither the catalog nor any historical assignment is touched.
+ const removeFromCompositionOnly=(x:{p:PersonElement;where:string|null})=>{
   if(elementLocked(elements,x.p.id)){
-   alert('El elemento está bloqueado.');
+   alert('El elemento está bloqueado. Desbloquéalo para quitarlo.');
    return;
   }
   const msg=x.where
-   ?`${x.p.name} está asignada a ${x.where}.\n\n¿Quitar a ${x.p.name} de este proyecto y de esta composición?`
-   :`¿Quitar a ${x.p.name} del proyecto actual?`;
+   ?`${x.p.name} está asignada a ${x.where}.\n\n¿Quitarla de esta composición? El puesto quedará libre.\n\nLa persona seguirá en el catálogo y en el historial de las canciones.`
+   :`¿Quitar a ${x.p.name} de esta composición?\n\nLa persona seguirá en el catálogo y en el historial de las canciones.`;
+  if(!window.confirm(msg))return;
+  removeFromComposition(x.p.id);
+ };
+ // GLOBAL: removes the visual representation AND the SongAssignment rows of THIS
+ // project only. Explicit, confirmed and deliberately NOT part of the undo history.
+ const removeFromProject=async(x:{p:PersonElement;where:string|null})=>{
+  if(elementLocked(elements,x.p.id)){
+   alert('El elemento está bloqueado. Desbloquéalo para quitarla.');
+   return;
+  }
+  if(projectId==null){
+   alert('Abre un proyecto para poder quitar personas del proyecto.');
+   return;
+  }
+  const msg=`${x.p.name} será retirada de ESTE proyecto.\n\n`
+   +`· Se eliminará de las canciones del proyecto (asignaciones).\n`
+   +`· Se quitará de las composiciones guardadas de este proyecto.\n`
+   +`· La persona seguirá existiendo en el catálogo global.\n\n`
+   +`Esta operación no se puede deshacer con Ctrl+Z. ¿Continuar?`;
   if(!window.confirm(msg))return;
   try{
-   await api.deletePerson(x.p.personId, projectId);
+   await api.removePersonFromProject(x.p.personId,projectId,'project');
    removePersonFromProject(x.p.id);
    onDeleted?.(x.p.personId);
-  }catch(e:any){alert(e.message||'No se pudo quitar la persona');}
+  }catch(e:any){alert(e.message||'No se pudo quitar la persona del proyecto');}
  };
- const item=(x:{p:PersonElement;where:string|null})=>(
-  <div key={x.p.id} className={`pp-item ${selectedId===x.p.id?'sel':''}`}>
-   <button className="pp-main" onClick={()=>focus(x.p.id)}
-    title={x.where?`Asignada a ${x.where} — clic para localizar y seleccionar`:'Sin asignar — clic para seleccionar'}>
-    <b>{x.p.name}</b>
-    <small>{x.where?x.where:`Libre · ${x.p.positionType}`}</small>
-   </button>
-   <button className="pp-del" title={`Quitar a ${x.p.name} del proyecto`} onClick={()=>removePerson(x)}>🗑</button>
-  </div>
- );
+ const assignToSelectedSlot=(x:{p:PersonElement;where:string|null})=>{
+  if(!selectedSlot){
+   alert('Primero toca un puesto de la marimba en el lienzo y después pulsa «Asignar».');
+   return;
+  }
+  if(elementLocked(elements,x.p.id)){
+   alert('El elemento está bloqueado. Desbloquéalo para asignarlo.');
+   return;
+  }
+  assign(x.p.id,selectedSlot.marimbaId,selectedSlot.positionId);
+ };
+ const item=(x:{p:PersonElement;where:string|null})=>{
+  const locked=elementLocked(elements,x.p.id);
+  return (
+   <div key={x.p.id} className={`pp-item ${selectedId===x.p.id?'sel':''} ${locked?'locked':''}`}
+    draggable={!locked}
+    onDragStart={ev=>{
+     ev.dataTransfer.setData(DRAG_PERSON_MIME,x.p.id);
+     ev.dataTransfer.setData('text/plain',x.p.name);
+     ev.dataTransfer.effectAllowed='move';
+    }}
+    title={locked?'Bloqueada: desbloquéala para arrastrarla o asignarla':`${x.p.name} — arrastra al lienzo para asignar`}>
+    <button className="pp-main" onClick={()=>focus(x.p.id)}
+     title={locked?'Elemento bloqueado':x.where?`Asignada a ${x.where} — clic para localizar y seleccionar`:'Sin asignar — clic para seleccionar, o arrastra al lienzo'}>
+     <b>{x.p.locked?'🔒 ':''}{x.p.name}</b>
+     <small>{x.where?x.where:`Libre · ${x.p.positionType}`}</small>
+    </button>
+    <button className="pp-act" title={slotLabel?`${x.where?'Reemplazar en':'Asignar a'} ${slotLabel}`:'Selecciona primero un puesto en la marimba'}
+     disabled={locked} onClick={()=>assignToSelectedSlot(x)}>◎</button>
+    <button className="pp-del" disabled={locked} title={locked?'Bloqueada: desbloquéala para quitarla':`Quitar a ${x.p.name} de esta composición`}
+     onClick={()=>removeFromCompositionOnly(x)}>🗑</button>
+    <button className="pp-del proj" disabled={locked} title={locked?'Bloqueada: desbloquéala para quitarla':`Quitar a ${x.p.name} del proyecto (elimina sus asignaciones en este proyecto)`}
+     onClick={()=>removeFromProject(x)}>⛔</button>
+   </div>
+  );
+ };
  return (
   <div className="person-panel">
    <div className="pp-toolbar">
@@ -82,6 +137,12 @@ export default function PersonPanel({projectId, onDeleted}:{projectId?:number; o
     </div>
    )}
    <input className="pp-search" value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar persona o destino..."/>
+   <p className="hint">
+    {slotLabel
+     ?<>Puesto seleccionado: <strong>{slotLabel}</strong>. Pulsa <b>◎</b> en una persona para asignarla o reemplazarla.</>
+     :<>Clic para seleccionar · arrastra al lienzo para asignar · con el dedo: toca un puesto y luego <b>◎</b>.</>}
+   </p>
+   <p className="hint">🗑 quita solo de esta composición (se deshace con Ctrl+Z) · ⛔ quita del proyecto (borra sus asignaciones y no se deshace).</p>
    {persons.length===0&&<p className="hint">Aún no hay personas en el lienzo. Usa «＋ Persona» o personas de la pieza.</p>}
    {persons.length>0&&filtered.length===0&&<p className="hint">Sin coincidencias.</p>}
    <div className="pp-group">

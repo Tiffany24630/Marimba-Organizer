@@ -1,5 +1,23 @@
 import type {Element,MarimbaElement} from '../types';
 
+/**
+ * Live Konva stage viewport, published by CanvasEditor so that DOM-level
+ * interactions (HTML5 drag & drop from the side panels) can convert client
+ * coordinates into composition world coordinates.
+ */
+export const viewport={scale:1,x:0,y:0};
+
+export function syncViewport(scale:number,x:number,y:number){
+ viewport.scale=scale||1;
+ viewport.x=x;
+ viewport.y=y;
+}
+
+/** Converts a viewport (client) point into composition world coordinates. */
+export function clientToWorld(clientX:number,clientY:number,origin:{left:number;top:number}){
+ return {x:(clientX-origin.left-viewport.x)/viewport.scale,y:(clientY-origin.top-viewport.y)/viewport.scale};
+}
+
 export const PERSON_W=150;
 export const PERSON_H=44;
 export const MARIMBA_DEFAULT={width:380,height:150,pad:14,gap:10,slotH:54,slotY:56,minSlotW:104};

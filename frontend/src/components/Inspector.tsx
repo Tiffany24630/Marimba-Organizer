@@ -1,7 +1,8 @@
 import {useState} from 'react';
-import {useComposition} from '../store/composition';
+import {useComposition,elementLocked} from '../store/composition';
 import type {MarimbaElement,PersonElement} from '../types';
 import {slotCenter,slotRect} from '../lib/layout';
+import {compatiblePosition} from '../store/composition';
 import {api} from '../lib/api';
 import {useConfirm} from '../hooks/useConfirm';
 
@@ -14,6 +15,9 @@ export default function Inspector({detectedPositions,drawerOpen,onDrawerToggle}:
 }){
  const elements=useComposition(s=>s.elements);
  const selectedId=useComposition(s=>s.selectedId);
+ const selectedSlot=useComposition(s=>s.selectedSlot);
+ const selectSlot=useComposition(s=>s.selectSlot);
+ const assign=useComposition(s=>s.assign);
  const update=useComposition(s=>s.update);
  const remove=useComposition(s=>s.remove);
  const toggleLock=useComposition(s=>s.toggleLock);
@@ -46,7 +50,48 @@ export default function Inspector({detectedPositions,drawerOpen,onDrawerToggle}:
  const listId='position-types';
  const datalist=<datalist id={listId}>{types.map(t=><option key={t} value={t}/>)}</datalist>;
 
- if(e&&e.type==='marimba'){
+  if(selectedSlot&&!e){
+  const sm=elements.find((x):x is MarimbaElement=>x.id===selectedSlot.marimbaId&&x.type==='marimba');
+  const si=sm?sm.positions.findIndex(x=>x.id===selectedSlot.positionId):-1;
+  if(sm&&si>=0){
+   const slot=sm.positions[si];
+   const sLocked=Boolean(sm.locked);
+   const occupant=slot.personId!=null?elements.find((x):x is PersonElement=>x.type==='person'&&x.personId===slot.personId):undefined;
+   const candidates=elements.filter((x):x is PersonElement=>x.type==='person'
+    &&x.personId!==slot.personId&&compatiblePosition(x.positionType,slot.type));
+   return (
+    <aside className={inspectorCls}>
+     {datalist}
+     <div className="inspector-header">
+      <h3>Puesto seleccionado</h3>
+      <button className="drawer-close" aria-label="Cerrar inspector" title="Cerrar inspector" onClick={()=>{selectSlot(null);onDrawerToggle?.(false);}}>✕</button>
+     </div>
+     <p className="hint"><strong>{sm.name}</strong> · puesto físico p{si}{sLocked?' 🔒':''}</p>
+     <label className="field">Tipo musical del puesto
+      <input list={listId} disabled={sLocked} value={slot.type} onChange={ev=>setPositionType(sm.id,slot.id,ev.target.value)}/>
+     </label>
+     <h4>Ocupante</h4>
+     {occupant
+      ?<p className="hint"><strong>{occupant.name}</strong> · {occupant.positionType}{compatiblePosition(occupant.positionType,slot.type)?'':' (no coincide con el tipo del puesto)'}</p>
+      :<p className="hint">Puesto libre.</p>}
+     {occupant&&<button disabled={sLocked} onClick={()=>{const r=slotRect(sm,si);unassign(occupant.id,{x:occupant.x-r.width/2,y:occupant.y-r.height/2});}}>Liberar ocupante</button>}
+     <h4>Asignar persona</h4>
+     {candidates.length===0
+      ?<p className="hint">Ninguna persona del lienzo tiene el puesto musical «{slot.type}». Cambia el tipo del puesto o el puesto musical de la persona.</p>
+      :<label className="field">Personas compatibles ({candidates.length})
+       <select disabled={sLocked} value="" onChange={ev=>{const who=candidates.find(x=>x.id===ev.target.value);if(who)assign(who.id,sm.id,slot.id);ev.target.value='';}}>
+        <option value="">Elegir persona…</option>
+        {candidates.map(x=><option key={x.id} value={x.id}>{x.name} ({x.positionType})</option>)}
+       </select>
+      </label>}
+     <p className="hint">Cambiar tipo, asignar y liberar modifican solo esta composición: un paso de Ctrl+Z cada uno.</p>
+     <button onClick={()=>selectSlot(null)}>Deseleccionar puesto</button>
+    </aside>
+   );
+  }
+ }
+
+if(e&&e.type==='marimba'){
   const m=e as MarimbaElement;
   const occupied=m.positions.filter(p=>p.personId!=null).length;
   const isLocked=Boolean(m.locked);
@@ -61,6 +106,7 @@ export default function Inspector({detectedPositions,drawerOpen,onDrawerToggle}:
    <aside className={inspectorCls}>
     <div className="inspector-header">
      <h3>Marimba seleccionada {isLocked?'🔒':''}</h3>
+     <button className="drawer-close" aria-label="Cerrar inspector" title="Cerrar inspector" onClick={()=>onDrawerToggle?.(false)}>✕</button>
      <button className={`lock-btn ${isLocked?'locked':''}`} onClick={()=>toggleLock(m.id)}>
       {isLocked?'🔒 Bloqueada (Desbloquear)':'🔓 Desbloqueada (Bloquear)'}
      </button>
@@ -119,7 +165,7 @@ export default function Inspector({detectedPositions,drawerOpen,onDrawerToggle}:
 
  if(e&&e.type==='person'){
   const p=e as PersonElement;
-  const isLocked=Boolean(p.locked);
+  const isLocked=elementLocked(elements,p.id);
   const m=p.marimbaId?elements.find((x):x is MarimbaElement=>x.id===p.marimbaId&&x.type==='marimba'):undefined;
   const idx=m?m.positions.findIndex(x=>x.id===p.marimbaPositionId):-1;
   const pos=m&&idx>=0?m.positions[idx]:null;
@@ -128,6 +174,7 @@ export default function Inspector({detectedPositions,drawerOpen,onDrawerToggle}:
    <aside className={inspectorCls}>
     <div className="inspector-header">
      <h3>Persona seleccionada {isLocked?'🔒':''}</h3>
+     <button className="drawer-close" aria-label="Cerrar inspector" title="Cerrar inspector" onClick={()=>onDrawerToggle?.(false)}>✕</button>
      <button className={`lock-btn ${isLocked?'locked':''}`} onClick={()=>toggleLock(p.id)}>
       {isLocked?'🔒 Bloqueada (Desbloquear)':'🔓 Desbloqueada (Bloquear)'}
      </button>
@@ -142,7 +189,10 @@ export default function Inspector({detectedPositions,drawerOpen,onDrawerToggle}:
       }
       try{
        await api.renamePerson(p.personId,n);
-       renamePerson(p.id,n);
+       if(!renamePerson(p.id,n)){
+       alert('El nombre se guardó en el catálogo, pero el elemento está bloqueado: el lienzo no se actualizó.');
+       ev.target.value=p.name;
+      }
       }catch(e:any){
        alert('No se pudo guardar el nombre: '+(e.message||e));
        ev.target.value=p.name;
@@ -176,6 +226,7 @@ export default function Inspector({detectedPositions,drawerOpen,onDrawerToggle}:
     )}
 
     {m&&pos&&<button disabled={isLocked} onClick={()=>{const r=slotRect(m,idx);unassign(p.id,{x:p.x-r.width/2,y:p.y-r.height/2});}}>Quitar del puesto</button>}
+    <p className="hint">Asignar, liberar y cambiar el puesto modifican solo esta composición: un paso de Ctrl+Z cada uno.</p>
     <button className="danger" disabled={isLocked} onClick={()=>{
      if(m&&pos&&!window.confirm(`${p.name} está asignada a ${m.name} (${pos.type}). ¿Eliminar la persona del lienzo? El puesto quedará libre.`))return;
      remove(p.id);
@@ -188,7 +239,10 @@ export default function Inspector({detectedPositions,drawerOpen,onDrawerToggle}:
 
  return (
   <aside className={inspectorCls}>
-   <h3>Propiedades</h3>
+   <div className="inspector-header">
+    <h3>Propiedades</h3>
+    <button className="drawer-close" aria-label="Cerrar inspector" title="Cerrar inspector" onClick={()=>onDrawerToggle?.(false)}>✕</button>
+   </div>
    <p className="hint">Selecciona una marimba o persona en el lienzo para ver y editar sus propiedades.</p>
    <h4>Resumen</h4>
    <p className="hint">

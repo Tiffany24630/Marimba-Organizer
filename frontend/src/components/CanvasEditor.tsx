@@ -1,16 +1,19 @@
 import {Stage,Layer,Rect,Text,Group,Transformer} from 'react-konva';
 import {useEffect,useLayoutEffect,useRef,useState,useCallback} from 'react';
 import type Konva from 'konva';
-import {useComposition} from '../store/composition';
+import {useComposition,elementLocked} from '../store/composition';
 import type {MarimbaElement,PersonElement} from '../types';
-import {elementBBox,hitTestSlot,slotRect} from '../lib/layout';
+import {elementBBox,hitTestSlot,syncViewport,slotRect} from '../lib/layout';
 import {useConfirm} from '../hooks/useConfirm';
 
 function MarimbaNode({m,selected}:{m:MarimbaElement;selected:boolean}){
  const marimbaDragged=useComposition(s=>s.marimbaDragged);
  const marimbaTransformed=useComposition(s=>s.marimbaTransformed);
  const recordHistory=useComposition(s=>s.recordHistory);
+ const endGesture=useComposition(s=>s.endGesture);
  const select=useComposition(s=>s.select);
+ const selectedSlot=useComposition(s=>s.selectedSlot);
+ const selectSlot=useComposition(s=>s.selectSlot);
 
  return (
   <Group id={m.id} x={m.x} y={m.y} rotation={m.rotation} scaleX={m.scaleX} scaleY={m.scaleY}
@@ -19,20 +22,23 @@ function MarimbaNode({m,selected}:{m:MarimbaElement;selected:boolean}){
    onTap={ev=>{ev.cancelBubble=true;select(m.id);}}
    onDragStart={()=>recordHistory()}
    onDragMove={ev=>marimbaDragged(m.id,ev.target.x(),ev.target.y())}
-   onDragEnd={ev=>marimbaDragged(m.id,ev.target.x(),ev.target.y())}
+   onDragEnd={ev=>{marimbaDragged(m.id,ev.target.x(),ev.target.y());endGesture();}}
    onTransformStart={()=>recordHistory()}
-   onTransformEnd={ev=>{const n=ev.target;marimbaTransformed(m.id,{x:n.x(),y:n.y(),rotation:n.rotation(),scaleX:n.scaleX(),scaleY:n.scaleY()});}}>
+   onTransformEnd={ev=>{const n=ev.target;marimbaTransformed(m.id,{x:n.x(),y:n.y(),rotation:n.rotation(),scaleX:n.scaleX(),scaleY:n.scaleY()});endGesture();}}>
    <Rect width={m.width} height={m.height} fill="#1f2937"
     stroke={selected?'#22c55e':'#0f172a'} strokeWidth={selected?3:1}
     shadowColor={selected?'#22c55e':'transparent'} shadowBlur={selected?8:0} cornerRadius={12}/>
    <Text text={m.name} x={8} y={10} width={m.width-16} align="center" fontSize={17} fontStyle="bold" fill="#ffffff"/>
    {m.locked&&<Text text="🔒" x={m.width-28} y={8} fontSize={14} fill="#f59e0b"/>}
    <Text text={`${m.positions.length} puesto${m.positions.length===1?'':'s'}${m.locked?' · Bloqueada':''}`} x={8} y={33} width={m.width-16} align="center" fontSize={10} fill="#9ca3af"/>
-   {m.positions.map((p,i)=>{const r=slotRect(m,i);return (
+   {m.positions.map((p,i)=>{const r=slotRect(m,i);const isSel=selectedSlot?.marimbaId===m.id&&selectedSlot?.positionId===p.id;return (
     <Group key={p.id}>
      <Rect x={r.x} y={r.y} width={r.width} height={r.height}
-      fill={p.personId?'#14532d':'#374151'} stroke={p.personId?'#22c55e':'#4b5563'} strokeWidth={1} cornerRadius={6}/>
-     <Text text={p.type} x={r.x} y={r.y+5} width={r.width} align="center" fontSize={11} fill="#d1d5db"/>
+      fill={isSel?'#1d4ed8':p.personId?'#14532d':'#374151'} stroke={isSel?'#93c5fd':p.personId?'#22c55e':'#4b5563'} strokeWidth={isSel?3:1} cornerRadius={6}
+      onClick={ev=>{ev.cancelBubble=true;selectSlot({marimbaId:m.id,positionId:p.id});}}
+      onTap={ev=>{ev.cancelBubble=true;selectSlot({marimbaId:m.id,positionId:p.id});}}/>
+     <Text text={p.type} x={r.x} y={r.y+5} width={r.width} align="center" fontSize={11} fill="#d1d5db" listening={false}/>
+     <Text text={String(i)} x={r.x+3} y={r.y+r.height-13} fontSize={9} fill="#9ca3af" listening={false}/>
     </Group>);})}
   </Group>
  );
@@ -44,7 +50,7 @@ function PersonNode({e,selected}:{e:PersonElement;selected:boolean}){
  const update=useComposition(s=>s.update);
  const dropPerson=useComposition(s=>s.dropPerson);
  const assign=useComposition(s=>s.assign);
- const recordHistory=useComposition(s=>s.recordHistory);
+ const endGesture=useComposition(s=>s.endGesture);
  const confirm=useConfirm();
 
  const m=e.marimbaId?elements.find((x):x is MarimbaElement=>x.id===e.marimbaId&&x.type==='marimba'):undefined;
@@ -55,14 +61,16 @@ function PersonNode({e,selected}:{e:PersonElement;selected:boolean}){
  const ph=assigned&&r?r.height-6:e.height;
  const rotation=assigned&&m?m.rotation:e.rotation;
  const fontSize=pw<120?11:14;
+ // A person sitting on a locked marimba is locked too: the drag handle must not lie.
+ const locked=elementLocked(elements,e.id);
 
  return (
   <Group id={e.id} x={e.x} y={e.y} rotation={rotation} scaleX={assigned?1:e.scaleX} scaleY={assigned?1:e.scaleY}
    offsetX={assigned?pw/2:0} offsetY={assigned?ph/2:0}
-   draggable={!e.locked}
+   draggable={!locked}
    onClick={ev=>{ev.cancelBubble=true;select(e.id);}}
    onTap={ev=>{ev.cancelBubble=true;select(e.id);}}
-   onDragStart={()=>recordHistory()}
+   onDragStart={()=>{/* the store is mutated only on drag end, so no pre-snapshot is needed */}}
    onDragEnd={ev=>{
      const node=ev.target;
      const stage=node.getStage();
@@ -73,7 +81,7 @@ function PersonNode({e,selected}:{e:PersonElement;selected:boolean}){
       if(raw) pointer=transform.point(raw);
      }
      const fallback=assigned&&r?{x:node.x()-pw/2,y:node.y()-ph/2,rotation:0}:{x:node.x(),y:node.y(),rotation:node.rotation()};
-     const snapBack=()=>{
+     const snapBack=()=>{endGesture();
       if(assigned){node.x(e.x);node.y(e.y);node.rotation(m?m.rotation:0);}
       else{node.x(e.x);node.y(e.y);node.rotation(e.rotation);}
       node.getLayer()?.batchDraw();
@@ -105,7 +113,7 @@ function PersonNode({e,selected}:{e:PersonElement;selected:boolean}){
       assign(e.id,tm.id,tslot.id);
      })();
     }}
-       onTransformStart={()=>recordHistory()}
+    onTransformStart={()=>{}}
    onTransformEnd={ev=>{const n=ev.target;update(e.id,{x:n.x(),y:n.y(),rotation:n.rotation(),scaleX:n.scaleX(),scaleY:n.scaleY()});}}>
    <Rect width={pw} height={ph} fill="#ffffff"
     stroke={selected?'#22c55e':'#111827'} strokeWidth={selected?3:1}
@@ -121,6 +129,7 @@ export default function CanvasEditor(){
  const elements=useComposition(s=>s.elements);
  const selectedId=useComposition(s=>s.selectedId);
  const select=useComposition(s=>s.select);
+ const selectSlot=useComposition(s=>s.selectSlot);
  const remove=useComposition(s=>s.remove);
  const undo=useComposition(s=>s.undo);
  const redo=useComposition(s=>s.redo);
@@ -148,7 +157,11 @@ export default function CanvasEditor(){
  },[]);
 
  const selEl=elements.find(e=>e.id===selectedId);
- const isLocked=Boolean(selEl?.locked);
+ // A person on a locked marimba counts as locked everywhere (transformer, delete key).
+ const isLocked=selectedId?elementLocked(elements,selectedId):false;
+ // Publish the live stage transform so DOM drag & drop (side panel -> canvas) can map
+ // client coordinates into composition world coordinates.
+ useEffect(()=>{syncViewport(zoom,stagePos.x,stagePos.y);},[zoom,stagePos]);
  const focusId=useComposition(s=>s.focusId);
  const clearFocus=useComposition(s=>s.clearFocus);
 
@@ -209,7 +222,7 @@ export default function CanvasEditor(){
    if((ev.key==='Delete'||ev.key==='Backspace')&&selectedId){
     if(!isLocked) remove(selectedId);
    }
-   if(ev.key==='Escape') select(null);
+   if(ev.key==='Escape'){select(null);selectSlot(null);}
   };
   window.addEventListener('keydown',onKey);
   return()=>window.removeEventListener('keydown',onKey);
@@ -427,7 +440,7 @@ export default function CanvasEditor(){
    </Stage>
 
    <div className="canvas-help">
-    Arrastra personas sobre los puestos de una marimba para asignarlas; arrástralas fuera para liberarlas. Selecciona y usa Supr para eliminar. Esc deselecciona.
+    Arrastra personas sobre los puestos de una marimba para asignarlas; arrástralas fuera para liberarlas. También puedes arrastrar desde el panel de Personas, o tocar un puesto y usar ◎. Selecciona y usa Supr para eliminar. Esc deselecciona.
    </div>
    {selectedId&&!isLocked&&<button className="danger floating" onClick={()=>remove(selectedId)}>Eliminar seleccionado</button>}
   </div>
