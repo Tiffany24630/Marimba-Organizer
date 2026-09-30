@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 from fastapi import HTTPException
 import pytest
+import uuid
 from app.main import app
 from app.models import Project, Person, Position, Song, SongAssignment, Composition
 from app.db.session import SessionLocal
@@ -313,9 +314,67 @@ def test_11_original_composition_intact_before_apply():
     finally:
         db.close()
 
+def _plantillas_aisladas(marca):
+    """
+    Crea EXCLUSIVAMENTE las plantillas que necesita esta prueba y devuelve sus ids.
+
+    `get_default_templates(db)` (engine_a.py) lee TODAS las plantillas de la base,
+    sin ningun filtro. Por eso el resultado del test dependia de lo que hubiera
+    guardado en la base de pruebas (en este proyecto quedaban plantillas de
+    verificaciones anteriores) y la prueba era fragil.
+
+    Nota: `MarimbaTemplate` NO tiene columna `active`. El aislamiento se hace
+    creando plantillas propias y BORRANDOLAS al terminar en `_limpiar_plantillas`,
+    sin tocar jamas las que ya existian.
+    """
+    db = SessionLocal()
+    try:
+        from app.models import MarimbaTemplate
+        sufijo = uuid.uuid4().hex[:8].upper()
+        ids = []
+
+        for nombre, posiciones in marca:
+            t = MarimbaTemplate(name='%s QA %s' % (nombre, sufijo),
+                                positions=list(posiciones))
+            db.add(t)
+            db.flush()
+            ids.append(t.id)
+
+        db.commit()
+        return ids
+    finally:
+        db.close()
+
+
+def _limpiar_plantillas(ids):
+    """Borra SOLO las plantillas creadas por la prueba; no toca las demas."""
+    if not ids:
+        return
+    db = SessionLocal()
+    try:
+        from app.models import MarimbaTemplate
+
+        for t in db.query(MarimbaTemplate).filter(
+                MarimbaTemplate.id.in_(ids)).all():
+            db.delete(t)
+
+        db.commit()
+    finally:
+        db.close()
+
+
+# Plantillas minimas: cubren las unicas dos posiciones que el test necesita
+# ('Primera' para Carlos y 'Segunda' para Ana).
+MARCA_PRUEBA = [
+    ('Grande', ['Primera', 'Primera']),
+    ('Tenor', ['Segunda']),
+]
+
+
 def test_12_suggestion_endpoints_e2e():
     d = _setup()
     db, sb = d["db"], d["song_b"]
+    ids = _plantillas_aisladas(MARCA_PRUEBA)
 
     try:
         r = client.get(f"/api/songs/{sb.id}/history")
@@ -378,6 +437,9 @@ def test_12_suggestion_endpoints_e2e():
 
     finally:
         db.close()
+        # Las plantillas de esta prueba se borran SIEMPRE, passara lo que pasare
+        # con las aserciones, para no dejar residuos que afecten a otros tests.
+        _limpiar_plantillas(ids)
 
 def test_13_legacy_suggestions_endpoint():
     r = client.post("/api/suggestions", json={

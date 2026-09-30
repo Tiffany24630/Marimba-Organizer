@@ -1,6 +1,7 @@
 """Motor de distribucion parte 1: slots reales + mapa previo + explicaciones."""
 from sqlalchemy import select
 from app.services.suggestions.history import parse_composition_marimba_info  # noqa
+from app.services.suggestions.positions import normalize_mapping, same_position
 
 def get_previous_song(song, db):
     others = [s for s in song.project.songs if s.id != song.id]
@@ -111,8 +112,12 @@ def build_template_slots(templates, requirements, max_per_template=8):
     Se agregan instancias de plantilla hasta cubrir `requirements`. NO se crean
     marimbas inventadas: lo que las plantillas no cubren queda como faltante, de
     modo que los puestos siempre respetan los tipos de la plantilla original.
+
+    `requirements` se normaliza: "Primeras" (como viene en el Excel) se cuenta
+    contra los puestos "Primera" de la plantilla. Antes se comparaba por
+    igualdad exacta y ninguna plantilla podia cubrir esos puestos.
     """
-    need = {k: int(v) for k, v in (requirements or {}).items() if int(v) > 0}
+    need = {k: v for k, v in normalize_mapping(requirements).items() if v > 0}
     if not need:
         return []
     cap = {}

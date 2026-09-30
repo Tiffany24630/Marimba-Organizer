@@ -1,8 +1,16 @@
 """Motor parte 2a: seleccion determinista (slots + candidatos)."""
 from app.services.suggestions.engine_a import _explain
+from app.services.suggestions.positions import same_position
 
 def _free_of(slots, used_s, pos):
-    return [s for s in slots if s['position_type'] == pos and s['slot_id'] not in used_s]
+    """Puestos libres compatibles con el puesto musical `pos`.
+
+    La comparacion usa el canonico del puesto ("Primeras" y "Primera" son el
+    mismo puesto musical), no la igualdad exacta de cadenas. Sin esto, ningun
+    puesto fisico era compatible con los puestos que trae el Excel.
+    """
+    return [s for s in slots if same_position(s['position_type'], pos)
+            and s['slot_id'] not in used_s]
 
 def _same_marimba(pv, s):
     """D1: ¿el puesto `s` pertenece a la MISMA instancia que la previa?

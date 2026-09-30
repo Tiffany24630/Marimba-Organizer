@@ -1,8 +1,25 @@
 """Motor parte 2b: bucle principal propose_distribution."""
 from app.services.suggestions.engine_a import _explain
 from app.services.suggestions.engine_b import _free_of, _pick, _cands, _same_marimba
+from app.services.suggestions.positions import (canonical, normalize_mapping,
+                                               same_position)
 
-def _explain_shortage(pos, need, done, cap, used_s, slots, free_people):
+def _capacity_by_canonical(slots):
+    """{nombre canonico: cantidad de puestos} de una lista de slots.
+
+    Cuenta por el canonico del puesto: "Primera" y "Primeras" son el mismo
+    puesto musical y su capacidad se suma.
+    """
+    cap_canon = {}
+
+    for s in slots:
+        k = canonical(s['position_type'])
+        cap_canon[k] = cap_canon.get(k, 0) + 1
+
+    return cap_canon
+
+
+def _explain_shortage(pos, need, done, slots, used_s, free_people):
     """D5: explica POR QUE no se pudo completar una posicion musical.
 
     Antes se reportaba "Falta N musico(s)" comparando solo la cantidad total de
@@ -17,16 +34,24 @@ def _explain_shortage(pos, need, done, cap, used_s, slots, free_people):
 
     Se conservan las claves previas (`position`, `required`, `available`,
     `missing`) para no romper a los clientes; las nuevas son aditivas.
+
+    La firma es `(pos, need, done, slots, used_s, free_people)` y la comparte el
+    motor greedy y el optimizador, de modo que el diagnostico es el mismo en
+    ambos caminos.
     """
-    available = cap.get(pos, 0)
-    free_slots = [s for s in slots
-                  if s['position_type'] == pos and s['slot_id'] not in used_s]
+    # La capacidad se cuenta por el CANONICO del puesto: si el Excel pide
+    # "Primeras" y la marimba tiene "Primera", ambos son el mismo puesto y debe
+    # contar como disponible. Antes se contaban por igualdad exacta y se
+    # reportaba falsamente que no existia ningun puesto compatible.
+    cap_canon = _capacity_by_canonical(slots)
+    available = cap_canon.get(canonical(pos), 0)
+    free_slots = _free_of(slots, used_s, pos)
     missing = need - done
 
     # Puestos de OTRO tipo que existen en las marimbas: sirven para explicar que
     # hay capacidad, pero no del tipo que esta cancion necesita.
     other_types = sorted({s['position_type'] for s in slots
-                          if s['position_type'] != pos})
+                          if not same_position(s['position_type'], pos)})
 
     # Dos causas independientes, no excluyentes:
     #   * falta de Puestos: no hay suficientes puestos fisicos del tipo pedido;
@@ -37,8 +62,11 @@ def _explain_shortage(pos, need, done, cap, used_s, slots, free_people):
 
     if available == 0:
         reason = 'no_slots'
-        detail = ('No existe ningun puesto fisico de tipo "%s" en las marimbas.'
-                  % pos)
+        # `available` ya suma por canonico, asi que llegar aqui significa que
+        # ningun puesto de las marimbas es de este puesto musical (ni siquiera
+        # una variante). No hace falta buscar alias: no existen.
+        detail = ('No existe ningun puesto fisico de tipo "%s" en las '
+                  'marimbas.' % pos)
 
         if other_types:
             detail += (' Las marimbas solo tienen puestos de: %s.'
@@ -78,20 +106,22 @@ def propose_distribution(requirements, available_people, slots, prev_map, histor
     people = sorted(available_people, key=lambda p: (p['name'], p['person_id']))
     used_p, used_s = set(), set()
     assigns, unf, warns = [], [], []
-    cap = {}
 
-    for s in slots:
-        cap[s['position_type']] = cap.get(s['position_type'], 0) + 1
+    # Capacidad por el CANONICO del puesto musical. Se recorren las posiciones
+    # pedidas con su nombre original ("Primeras") pero la capacidad se mide
+    # contra cualquier puesto equivalente ("Primera").
+    cap_canon = _capacity_by_canonical(slots)
 
     for pos in sorted(requirements.keys()):
         need = requirements[pos]
         fr = _free_of(slots, used_s, pos)
+        available_here = cap_canon.get(canonical(pos), 0)
 
         if len(fr) < need:
             warns.append('Falta %d posicion %s: requeridas %d, disponibles %d.' % (
                 need - len(fr), pos, need, len(fr)))
 
-        if pos not in cap:
+        if available_here == 0:
             warns.append('La posicion %s no existe en las marimbas.' % pos)
 
         for _ in range(need):
@@ -100,8 +130,8 @@ def propose_distribution(requirements, available_people, slots, prev_map, histor
             rest = [p for p in people if p['person_id'] not in used_p]
 
             if not fr or not rest:
-                info = _explain_shortage(pos, need, done, cap, used_s,
-                                         slots, len(people) - len(used_p))
+                info = _explain_shortage(pos, need, done, slots, used_s,
+                                         len(people) - len(used_p))
                 unf.append(info)
                 # D5: el aviso de "falta musica" solo se emite cuando la musica es
                 # la causa real. Antes se generaba siempre y acababa acusando a los
