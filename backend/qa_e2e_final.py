@@ -1,4 +1,4 @@
-import json, os, glob, urllib.request, urllib.error
+import json, os, glob, urllib.request, urllib.error, atexit, sys
 BASE='http://localhost:8000/api'
 CK=[]
 def req(method, path, payload=None, raw=None, ctype='application/json'):
@@ -25,6 +25,18 @@ def check(name, cond, detail=''):
 s,p=req('POST','/projects',{'name':'QA Concierto Visual'})
 pid=p.get('id') if isinstance(p,dict) else None
 check('A1 crear proyecto', s==200 and pid, (s,p))
+# Unico proyecto que crea este script. Se registra el id REAL devuelto por la
+# API y se borra al final; nunca se borra por rango ni por patron de nombre.
+CREADOS=[pid] if pid else []
+def limpiar():
+    for x in list(CREADOS):
+        if x is None: continue
+        st,_=req('DELETE','/projects/%s'%x)
+        print('limpieza: proyecto %s -> %s'%(x,st))
+    CREADOS.clear()
+# Doble red: `finally` al final del script y `atexit` para excepciones o
+# Ctrl+C, de modo que una corrida fallida tampoco deja datos en la base real.
+atexit.register(limpiar)
 s,p=req('GET','/projects/%s'%pid); check('A2 abrir proyecto', s==200, s)
 s,p=req('GET','/projects')
 check('A3 listado + persistencia', s==200 and isinstance(p,list) and any(x.get('id')==pid for x in p), s)
@@ -72,7 +84,12 @@ if xl:
     s,p=req('POST','/imports/preview',raw=body,ctype='multipart/form-data; boundary='+b)
     check('D1 excel preview', s==200 and isinstance(p,dict), (s,str(p)[:140]))
     if s==200 and isinstance(p,dict):
-        s2,p2=req('POST','/imports/confirm',p)
+        # Se importa DENTRO del proyecto de la prueba. Antes se hacia
+        # `req('POST','/imports/confirm', p)` sin `project_id`, y el endpoint
+        # (routes.py) crea un proyecto NUEVO cuando no se le indica uno: cada
+        # ejecucion dejaba un proyecto huerfano en la base real.
+        payload=dict(p); payload['project_id']=pid
+        s2,p2=req('POST','/imports/confirm',payload)
         check('D2 excel confirm', s2==200, (s2,str(p2)[:140]))
 else:
     check('D1 excel preview', False, 'no se encontro xlsx en examples/')
@@ -122,6 +139,7 @@ if isinstance(cx,dict) and cx.get('id'):
         xx=[e for e in compby(cid)['data']['elements'] if e.get('id')=='mA'][0].get('x')
         check('E12 original intacto tras editar copia', xx==420, xx)
 print('---')
+limpiar()
 bad=[n for n,ok in CK if not ok]
 print('TOTAL %d checks | %d fallas'%(len(CK),len(bad)))
 for n in bad: print('FALLA:',n)

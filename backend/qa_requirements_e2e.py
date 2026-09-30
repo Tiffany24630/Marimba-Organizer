@@ -1,8 +1,27 @@
-"""E2E real del informe de requisitos contra el backend en Docker."""
-import json, urllib.request, urllib.error
+"""E2E real del informe de requisitos contra el backend en Docker.
+
+Aislamiento: el unico proyecto que crea se registra por su id real y se borra al
+final (y con `atexit`, tambien si el script falla). La base real queda intacta.
+"""
+import json, urllib.request, urllib.error, atexit
 
 BASE='http://localhost:8000/api'
 OK=[];FAIL=[]
+# ids creados por ESTA corrida; nunca se borra por rango ni por nombre.
+CREADOS=[]
+
+def limpiar():
+    for x in list(CREADOS):
+        try:
+            urllib.request.urlopen(
+                urllib.request.Request(BASE+'/projects/%s'%x, method='DELETE'),
+                timeout=30).read()
+            print('limpieza: proyecto %s borrado'%x)
+        except Exception as e:
+            print('limpieza: proyecto %s no borrado (%s)'%(x,e))
+    CREADOS.clear()
+
+atexit.register(limpiar)
 
 def call(method,path,payload=None):
     data=json.dumps(payload).encode() if payload is not None else None
@@ -29,6 +48,7 @@ def marimba(mid,name,types):
 
 s,p=call('POST','/projects',{'name':'E2E Requisitos'})
 pid=p['id'];check('A1 crear proyecto',s==200,(s,p))
+if pid: CREADOS.append(pid)
 
 def asg(n,pos,i): return {'person':'%s %s %d'%(n,pos,i),'position':pos,'mark':'X'}
 confs=[asg('E2E Primera','Primera',i) for i in range(1,6)]
@@ -99,5 +119,6 @@ s,e=call('GET','/songs/%d/requirements?composition_id=999999'%sid)
 check('G2 composicion inexistente 404',s==404,s)
 
 print('---')
+limpiar()
 print('TOTAL %d checks | FALLAS %d'%(len(OK)+len(FAIL),len(FAIL)))
 for f in FAIL: print('FALLA:',f)
