@@ -1,0 +1,54 @@
+# Fase 7G - override de PRUEBAS E2E: SMTP real contra un buzon local.
+#
+# Solo se usa junto con `docker-compose.7f.yml` y solo en el proyecto de
+# pruebas `marimba7f`. Levanta Mailpit, un servidor SMTP de testing: recibe
+# los correos y NO los entrega a nadie. Su bandeja se consulta por HTTP, lo
+# que permite comprobar el mensaje y el enlace de recuperacion de verdad.
+#
+# Con esto `MAIL_PROVIDER=smtp` deja de ser una afirmacion y pasa a
+# comprobarse, sin enviar un solo correo a una direccion real.
+#
+#   docker compose -p marimba7f -f docker-compose.yml \
+#     -f docker-compose.7f.yml -f docker-compose.e2e.yml up -d
+services:
+  mailpit:
+    image: axllent/mailpit:latest
+    # 8025 = bandeja web, 1025 = SMTP. Publicados en puertos altos para no
+    # chocar con nada del host.
+    ports: ["18025:8025", "11025:1025"]
+    environment:
+      # Acepta cualquier remitente: es un buzon de pruebas, sin autenticacion.
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+  backend:
+    build: ./backend
+    depends_on: [mailpit]
+    environment:
+      # 7G - hay que REPETIR CORS_ORIGINS aqui: al fusionar este fichero con el
+      # compose base, el mapa `environment` se SUSTITUYE por completo (no se
+      # unen clave a clave). Sin esto el navegador recibe el preflight sin
+      # `Access-Control-Allow-Origin` y el login falla con ERR_FAILED.
+      CORS_ORIGINS: http://localhost:18080
+      PUBLIC_BASE_URL: http://localhost:18080
+      MAIL_PROVIDER: smtp
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_USE_TLS: "false"
+      SMTP_USER: ""
+      SMTP_PASSWORD: ""
+      MAIL_FROM: no-reply@marimba.local
+      # 9J - rate-limit determinista SOLO en E2E: 10 req / 60 s por IP.
+      # Produccion conserva el defecto 60/60 (config.py). Con 10, el spec 9J
+      # alcanza el 429 con ~11 peticiones rapidas, sin esperas de minutos.
+      PUBLIC_LINK_RATE_LIMIT: "10"
+      PUBLIC_LINK_RATE_WINDOW_S: "60"
+  frontend:
+    # 7G - el bundle se compila contra el backend de ESTE entorno aislado.
+    # Sin esto el bundle seguiria apuntando a http://localhost:8000/api, que
+    # aqui no existe, y el navegador no encontraria la API.
+    # En un despliegue real hay que poner la URL publica del backend.
+    ports: ["18080:80"]
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:18000/api

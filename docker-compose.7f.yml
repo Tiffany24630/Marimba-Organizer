@@ -1,0 +1,32 @@
+# Fase 7F - override de AISLAMIENTO para pruebas de despliegue.
+#
+# No modifica el docker-compose.yml original: se usa como fichero adicional
+# (`docker compose -p marimba7f -f docker-compose.yml -f docker-compose.7f.yml`).
+#
+# Motivos de cada override:
+#
+#  1. Puertos alternativos. El host ya tiene ocupados el 5432 (otro proyecto)
+#     y no conviene arriesgarse con el 8000/8080. Los puertos 18000/18080 estan
+#     libres y no tocan ninguna exposicion existente.
+#  2. `PUBLIC_BASE_URL` debe apuntar al frontend de ESTE entorno. Si se dejara el
+#     valor por defecto (localhost:5173, el servidor de desarrollo de Vite), los
+#     enlaces de recuperacion de contrasena serian inservibles al desplegar.
+#  3. El proveedor de correo se fija explicitamente en 'console' para que este
+#     entorno NUNCA pueda enviar correo real. Es una medida de seguridad: sin
+#     SMTP_HOST configurado, el modo console imprime el enlace y no sale nada.
+#
+# NO se incluye ninguna contrasena aqui: `MIGRATION_USER_PASSWORD` no se define,
+# y por diseno eso hace que la migracion NO cree ningun usuario de migracion
+# (comportamiento seguro documentado en FASE_7F_INTEGRATION.md).
+services:
+  backend:
+    # `!override` REEMPLAZA la lista en lugar de fusionarla. Sin esto, Compose
+    # une ambos ficheros y el contenedor acabaria publicado en 8000 (ademas de
+    # 18000), ocupando un puerto que pertenece a otro servicio del host.
+    ports: !override ["18000:8000"]
+    environment:
+      CORS_ORIGINS: http://localhost:18080,http://localhost:5173
+      PUBLIC_BASE_URL: http://localhost:18080
+      MAIL_PROVIDER: console
+  frontend:
+    ports: !override ["18080:80"]

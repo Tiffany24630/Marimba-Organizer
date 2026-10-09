@@ -16,6 +16,22 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/marimba_organizer
       CORS_ORIGINS: http://localhost:5173,http://localhost:8080
+      # 7G - URL publica del despliegue. Marca la cookie de sesion como
+      # `Secure` si es https y es la base de los enlaces de recuperacion de
+      # contrasena. Sin esto, un despliegue en produccion seguiria generando
+      # enlaces a http://localhost:5173, que no funcionan.
+      # Hay que fijarla en el despliegue (fichero .env o el entorno).
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
+      MIGRATION_USER_PASSWORD: ${MIGRATION_USER_PASSWORD:-}
+      # 'console' imprime el enlace en el registro y NO envia nada. Para envio
+      # real hay que poner 'smtp' y configurar SMTP_HOST.
+      MAIL_PROVIDER: ${MAIL_PROVIDER:-console}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+      MAIL_FROM: ${MAIL_FROM:-no-reply@marimba.local}
     ports: ["8000:8000"]
     restart: on-failure
     depends_on:
