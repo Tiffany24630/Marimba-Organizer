@@ -1,12 +1,17 @@
 import {useState} from 'react';
+import Numero from './Numero';
 import {useComposition,elementLocked} from '../store/composition';
 import type {MarimbaElement,PersonElement} from '../types';
-import {slotCenter,slotRect,PERSON_W,PERSON_H} from '../lib/layout';
+import {slotCenter,slotRect,PERSON_W,PERSON_H,minMarimbaWidth,minMarimbaHeight} from '../lib/layout';
 import {compatiblePosition,PERSON_MIN_SCALE,PERSON_MAX_SCALE} from '../store/composition';
 import {api} from '../lib/api';
 import {useConfirm} from '../hooks/useConfirm';
+import NoteEditor from './NoteEditor';
+import {isReadOnly} from '../store/composition';
 
 const DEFAULT_TYPES=['Primera','Segunda','Centro','Bajo','Tenor','Timbal','Contra','Teclado','Marimba Doble Agudo'];
+// 8A: la semantica de edicion numerica vive en `Numero.tsx` y la comparte con
+// el `AccessibleEditor`. Aqui ya no hay una copia local.
 
 export default function Inspector({detectedPositions,drawerOpen,onDrawerToggle,width}:{
  detectedPositions:string[];
@@ -20,6 +25,12 @@ export default function Inspector({detectedPositions,drawerOpen,onDrawerToggle,w
  const selectSlot=useComposition(s=>s.selectSlot);
  const assign=useComposition(s=>s.assign);
  const update=useComposition(s=>s.update);
+ const resizeMarimba=useComposition(s=>s.resizeMarimba);
+ // 7R: borrador de dimensiones. Se deriva durante el render (sin `useEffect`)
+ // para que al cambiar de seleccion vuelva a mostrar los valores reales y no
+ // un borrador de la marimba anterior.
+ const [borrador,setBorrador]=useState<{id:string;w:string;h:string}|null>(null);
+ const [sizeErr,setSizeErr]=useState('');
  const remove=useComposition(s=>s.remove);
  const toggleLock=useComposition(s=>s.toggleLock);
  const addPosition=useComposition(s=>s.addPosition);
@@ -34,6 +45,12 @@ export default function Inspector({detectedPositions,drawerOpen,onDrawerToggle,w
  const [newType,setNewType]=useState('Primera');
  const drawer=onDrawerToggle!==undefined;
  const inspStyle=width?({width,maxWidth:width,minWidth:0} as React.CSSProperties):undefined;
+ // 7E: en solo lectura el inspector CONSULTA, no edita. El store ya
+ // bloquea cualquier mutacion; aqui se deshabilitan los controles.
+ const ro=isReadOnly();
+ // 7L: confirmación accesible. Se instancia AQUÍ, antes de cualquier retorno
+ // temprano, porque las reglas de hooks no admiten nada condicional.
+ const confirmar=useConfirm();
  const inspectorCls=drawer?(`inspector drawer ${drawerOpen?'open':'closed'}`):'inspector';
 
  const e=elements.find(x=>x.id===selectedId)||null;
@@ -63,13 +80,19 @@ export default function Inspector({detectedPositions,drawerOpen,onDrawerToggle,w
    const candidates=elements.filter((x):x is PersonElement=>x.type==='person'
     &&x.personId!==slot.personId&&compatiblePosition(x.positionType,slot.type));
    return (
-    <aside className={inspectorCls} style={inspStyle}>
+    // 7K: hay DOS regiones `complementary` en el editor (la barra lateral y el
+    // inspector). axe exige que se distinguan por nombre accesible
+    // (`landmark-unique`); sin `aria-label` eran dos AnonymousRegion iguales.
+    <aside className={inspectorCls} style={inspStyle} aria-label="Inspector del elemento seleccionado">
      {datalist}
      <div className="inspector-header">
       <h3>Puesto seleccionado</h3>
       <button className="drawer-close" aria-label="Cerrar inspector" title="Cerrar inspector" onClick={()=>{selectSlot(null);onDrawerToggle?.(false);}}>✕</button>
      </div>
      <p className="hint"><strong>{sm.name}</strong> · puesto físico p{si}{sLocked?' 🔒':''}</p>
+     {/* 7B.1: anotaciones del PUESTO fisico. */}
+     <NoteEditor readOnly={ro} elementId={sm.id} positionId={sm.positions[si].id}
+      label={`${sm.name} · p${si} (${sm.positions[si].type})`}/>
      <label className="field">Tipo musical del puesto
       <input list={listId} disabled={sLocked} value={slot.type} onChange={ev=>setPositionType(sm.id,slot.id,ev.target.value)}/>
      </label>
@@ -98,10 +121,38 @@ if(e&&e.type==='marimba'){
   const m=e as MarimbaElement;
   const occupied=m.positions.filter(p=>p.personId!=null).length;
   const isLocked=Boolean(m.locked);
-  const confirmDeleteMarimba=()=>{
+  // 7R: valores mostrados. Si no hay borrador para ESTA marimba se muestran los
+  // valores reales, de modo que un rechazo del store se refleja solo.
+  const realW=String(Math.round(m.width)),realH=String(Math.round(m.height));
+  const shownW=borrador&&borrador.id===m.id?borrador.w:realW;
+  const shownH=borrador&&borrador.id===m.id?borrador.h:realH;
+  // El minimo se pide al helper compartido, nunca se recalcula en React.
+  const minWidth=minMarimbaWidth(m.positions.length);
+  // 7W: el minimo vertical tambien viene del helper compartido.
+  const minHeight=minMarimbaHeight();
+  const aplicarTamano=()=>{
+   const w=Number(shownW),h=Number(shownH);
+   if(!Number.isFinite(w)||!Number.isFinite(h)){setSizeErr('Escribe números válidos para el ancho y el alto.');return;}
+   if(w<minWidth){setSizeErr(`El ancho mínimo es ${minWidth} px para ${m.positions.length} puestos.`);return;}
+   if(h<minHeight){setSizeErr(`El alto mínimo es ${minHeight} px: es el espacio que ocupan los puestos.`);return;}
+   setSizeErr('');
+   resizeMarimba(m.id,w,h);
+   setBorrador(null);
+  };
+  const confirmDeleteMarimba=async()=>{
    const occupied=elements.filter((x):x is PersonElement=>x.type==='person'&&x.marimbaId===m.id&&x.marimbaPositionId!=null);
    const names=occupied.map(x=>x.name);
-   if(names.length>0&&!window.confirm(`Esta marimba tiene ${names.length} persona(s) asignada(s):\n${names.join('\n')}\n\n¿Eliminarla de todas formas? Se borrarán también sus puestos.`))return;
+   // 7L: `window.confirm` → diálogo accesible. El aviso solo aparece cuando hay
+   // personas sentadas, igual que antes; sin ellas se borra directamente.
+   if(names.length>0){
+    const ok=await confirmar.show({
+     title:`Eliminar «${m.name}»`,
+     message:`Esta marimba tiene ${names.length} persona(s) asignada(s):\n`
+      +`${names.join('\n')}\n\n¿Eliminarla de todas formas? Se borrarán también sus puestos.`,
+     destructive:true,
+    });
+    if(!ok)return;
+   }
    remove(m.id);
   };
 
@@ -114,31 +165,60 @@ if(e&&e.type==='marimba'){
       {isLocked?'🔒 Bloqueada (Desbloquear)':'🔓 Desbloqueada (Bloquear)'}
      </button>
     </div>
+    {/* 7B.1: anotaciones de la MARIMBA. */}
+    <NoteEditor readOnly={ro} elementId={m.id} label={m.name}/>
 
     <label className="field">Nombre
      <input value={m.name} onChange={ev=>update(m.id,{name:ev.target.value})}/>
     </label>
 
     <div className="row2">
-     <label className="field">X
-      <input type="number" disabled={isLocked} value={Math.round(m.x)} onChange={ev=>update(m.id,{x:Number(ev.target.value)||0})}/>
-     </label>
-     <label className="field">Y
-      <input type="number" disabled={isLocked} value={Math.round(m.y)} onChange={ev=>update(m.id,{y:Number(ev.target.value)||0})}/>
-     </label>
+     {/* 7Z: antes cada pulsacion llamaba a `update`. Ahora se confirman al
+         salir del campo o con Enter, y cada edicion es UN paso. */}
+     <Numero etiqueta="X" valor={Math.round(m.x)} disabled={isLocked}
+      onCommit={n=>update(m.id,{x:n})}/>
+     <Numero etiqueta="Y" valor={Math.round(m.y)} disabled={isLocked}
+      onCommit={n=>update(m.id,{y:n})}/>
     </div>
 
     <div className="row2">
-     <label className="field">Rotación °
-      <input type="number" disabled={isLocked} value={Math.round(m.rotation)} onChange={ev=>update(m.id,{rotation:Number(ev.target.value)||0})}/>
+     <Numero etiqueta="Rotación °" valor={Math.round(m.rotation)} disabled={isLocked}
+      onCommit={n=>update(m.id,{rotation:n})}/>
+     <Numero etiqueta="Escala" valor={Number(m.scaleX.toFixed(2))} step="0.1" min={0.3}
+      disabled={isLocked} inputMode="decimal"
+      onCommit={n=>{const v=Math.max(0.3,n);update(m.id,{scaleX:v,scaleY:v});}}/>
+    </div>
+
+    {/* 7R - redimensionado. La validacion de verdad vive en el store
+     * (`resizeMarimba`); aqui solo se avisa antes de llamar, para que el
+     * mensaje llegue a la persona sin depender del color. */}
+    <h4>Tamaño</h4>
+    <div className="row2">
+     <label className="field">Ancho (px)
+      <input type="number" min={minWidth} step="1" inputMode="numeric"
+       disabled={isLocked||ro} value={shownW}
+       aria-describedby={sizeErr?'resize-err':'resize-hint'}
+       onChange={ev=>{setSizeErr('');setBorrador({id:m.id,w:ev.target.value,h:shownH});}}/>
      </label>
-     <label className="field">Escala
-      <input type="number" step="0.1" min="0.3" disabled={isLocked} value={Number(m.scaleX.toFixed(2))}
-       onChange={ev=>{const v=Math.max(0.3,Number(ev.target.value)||1);update(m.id,{scaleX:v,scaleY:v});}}/>
+     <label className="field">Alto (px)
+      <input type="number" min={minHeight} step="1" inputMode="numeric"
+       disabled={isLocked||ro} value={shownH}
+       aria-describedby={sizeErr?'resize-err':'resize-hint'}
+       onChange={ev=>{setSizeErr('');setBorrador({id:m.id,w:shownW,h:ev.target.value});}}/>
      </label>
+    </div>
+    {sizeErr
+     ?<p className="hint" id="resize-err" role="alert">{sizeErr}</p>
+     :<p className="hint" id="resize-hint">Ancho mínimo: {minWidth} px para {m.positions.length} puesto{m.positions.length===1?'':'s'}. Alto mínimo: {minHeight} px.</p>}
+    <div className="pos-row add">
+     <button className="primary" disabled={isLocked||ro}
+      onClick={aplicarTamano}>Aplicar tamaño</button>
+     {isLocked&&<span className="hint">Desbloquea la marimba para cambiar su tamaño.</span>}
+     {ro&&!isLocked&&<span className="hint">Solo lectura: no puedes cambiar el tamaño.</span>}
     </div>
 
     <h4>Posiciones ({m.positions.length}) · {occupied} ocupadas</h4>
+     {datalist}
     {datalist}
 
     {m.positions.map((p,i)=>(
@@ -146,10 +226,10 @@ if(e&&e.type==='marimba'){
       <span className="pos-idx">p{i} →</span>
       <input list={listId} disabled={isLocked} value={p.type} onChange={ev=>setPositionType(m.id,p.id,ev.target.value)}/>
       <span className="occ" title={p.personId?'Ocupado por persona':'Libre'}>{p.personId?'✓':'○'}</span>
-      <button title="Subir posición" disabled={isLocked||i===0} onClick={()=>movePosition(m.id,p.id,-1)}>↑</button>
-      <button title="Bajar posición" disabled={isLocked||i===m.positions.length-1} onClick={()=>movePosition(m.id,p.id,1)}>↓</button>
-      {p.personId!=null&&(()=>{const who=elements.find((x):x is PersonElement=>x.type==='person'&&x.personId===p.personId);if(!who)return null;const cc=slotCenter(m,i);const rr=slotRect(m,i);return <button className="mini" title={`Quitar a ${who.name} del puesto (la persona no se elimina)`} disabled={isLocked} onClick={()=>unassign(who.id,{x:cc.x-rr.width/2,y:cc.y-rr.height/2})}>⏏</button>;})()}
-      <button className="mini danger" title="Eliminar posición" disabled={isLocked} onClick={()=>{if(p.personId!=null){const who=elements.find((x):x is PersonElement=>x.type==='person'&&x.personId===p.personId);if(who&&!window.confirm(`Esta posición está ocupada por ${who.name}. ¿Quitarla y eliminar el puesto?`))return;}removePosition(m.id,p.id);}}>✕</button>
+      <button title="Subir posición" aria-label={`Subir la posición p${i} (${p.type})`} disabled={isLocked||i===0} onClick={()=>movePosition(m.id,p.id,-1)}>↑</button>
+      <button title="Bajar posición" aria-label={`Bajar la posición p${i} (${p.type})`} disabled={isLocked||i===m.positions.length-1} onClick={()=>movePosition(m.id,p.id,1)}>↓</button>
+      {p.personId!=null&&(()=>{const who=elements.find((x):x is PersonElement=>x.type==='person'&&x.personId===p.personId);if(!who)return null;const cc=slotCenter(m,i);const rr=slotRect(m,i);return <button className="mini" aria-label={`Quitar a ${who.name} del puesto p${i}`} title={`Quitar a ${who.name} del puesto (la persona no se elimina)`} disabled={isLocked} onClick={()=>unassign(who.id,{x:cc.x-rr.width/2,y:cc.y-rr.height/2})}>⏏</button>;})()}
+      <button className="mini danger" aria-label={`Eliminar la posición p${i} (${p.type})`} title="Eliminar posición" disabled={isLocked} onClick={()=>{if(p.personId!=null){const who=elements.find((x):x is PersonElement=>x.type==='person'&&x.personId===p.personId);if(who&&!window.confirm(`Esta posición está ocupada por ${who.name}. ¿Quitarla y eliminar el puesto?`))return;}removePosition(m.id,p.id);}}>✕</button>
      </div>
     ))}
 
@@ -183,6 +263,8 @@ if(e&&e.type==='marimba'){
       {isLocked?'🔒 Bloqueada (Desbloquear)':'🔓 Desbloqueada (Bloquear)'}
      </button>
     </div>
+    {/* 7B.1: anotaciones de la PERSONA. */}
+    <NoteEditor readOnly={ro} elementId={p.id} label={p.name}/>
 
     <label className="field">Nombre
      <input defaultValue={p.name} key={p.id+p.name} disabled={isLocked} onBlur={async ev=>{

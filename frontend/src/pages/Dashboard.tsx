@@ -1,6 +1,9 @@
 import {useEffect,useState} from 'react';
 import {api} from '../lib/api';
+import {filterProjects} from '../lib/search';
 import ImportPanel from '../components/ImportPanel';
+import PublicLinksList from '../components/PublicLinksList';
+import {useConfirm} from '../hooks/useConfirm';
 import type {Template} from '../types';
 
 export default function Dashboard({open}:{open:(id:number)=>void}){
@@ -8,6 +11,13 @@ export default function Dashboard({open}:{open:(id:number)=>void}){
  const [templates,setTemplates]=useState<Template[]>([]);
  const [msg,setMsg]=useState<{kind:'ok'|'err';text:string}|null>(null);
  const [busy,setBusy]=useState<number|null>(null);
+ // 7L: confirmacion accesible en lugar de `window.confirm`.
+ const confirmar=useConfirm();
+ // 7B.2: consulta del buscador. Se filtra en memoria, sin recargar la pagina.
+ const [query,setQuery]=useState('');
+ // 9I: el listado AGREGADO de enlaces publicos se carga solo al abrirlo.
+ const [verEnlaces,setVerEnlaces]=useState(false);
+ const shown=filterProjects(projects,query);
  const load=()=>{
   api.projects().then(setProjects).catch(e=>alert(e.message));
   api.templates().then(setTemplates).catch(()=>{});
@@ -30,11 +40,16 @@ export default function Dashboard({open}:{open:(id:number)=>void}){
  };
 
  const remove=async(p:any)=>{
-  const ok=window.confirm(
-   `¿Eliminar el trabajo "${p.name}"?\n\n`
-   +`Se borrarán sus canciones, asignaciones y composiciones.\n`
-   +`Las personas y las plantillas NO se eliminan.\n\n`
-   +`Esta acción no se puede deshacer.`);
+  // 7L: `window.confirm` → diálogo accesible. El texto es el MISMO que se
+  // mostraba antes: no se pierde información ni cambia el comportamiento.
+  // El botón dice "Eliminar" y el foco inicial va a "Cancelar".
+  const ok=await confirmar.show({
+   title:`Eliminar el trabajo «${p.name}»`,
+   message:'Se borrarán sus canciones, asignaciones y composiciones. '
+    +'Las personas y las plantillas NO se eliminan.\n\n'
+    +'Esta acción no se puede deshacer.',
+   destructive:true,
+  });
   if(!ok)return;
   setBusy(p.id);
   try{
@@ -174,19 +189,45 @@ export default function Dashboard({open}:{open:(id:number)=>void}){
        </div>
       </div>
      )}
+     {/* 7B.2: buscador de trabajos. Filtra en el cliente: la lista ya esta
+         cargada entera, asi que responde al instante sin peticiones extra. */}
+     <div className="dash-search">
+      <input type="search" value={query} autoFocus
+       placeholder="Buscar trabajo por nombre…"
+       aria-label="Buscar trabajo por nombre"
+       onChange={e=>setQuery(e.target.value)}/>
+      {query&&(
+       <button onClick={()=>setQuery('')} title="Limpiar búsqueda"
+        aria-label="Limpiar búsqueda">✕</button>
+      )}
+     </div>
+     {query.trim()&&(
+      <p className="hint">
+       {shown.length} de {projects.length} trabajo{shown.length===1?'':'s'} coinciden con «{query.trim()}».
+      </p>
+     )}
      {projects.length===0
       ?<p className="hint">Aún no hay trabajos guardados.</p>
+      :shown.length===0
+      ?<p className="hint empty-search">
+       Ningún trabajo coincide con «{query.trim()}».
+       <button onClick={()=>setQuery('')}>Limpiar búsqueda</button>
+      </p>
       :<div className="proj-list">
-       {projects.map(p=>(
+       {shown.map(p=>(
         <div className="project" key={p.id}>
          <button className="project-open" onClick={()=>open(p.id)}>
           <strong>{p.name}</strong>
           <small>{p.source_filename||'Proyecto manual'}</small>
          </button>
          <div className="project-btns">
-          <button title="Renombrar proyecto" disabled={busy===p.id}
+          {/* 7X: `title` no basta como nombre accesible cuando el boton tiene contenido:
+             el contenido gana y el nombre quedaba en "✎" / "🗑". */}
+          <button title={`Renombrar el proyecto ${p.name}`}
+           aria-label={`Renombrar el proyecto ${p.name}`} disabled={busy===p.id}
            onClick={()=>rename(p)}>✎</button>
-          <button className="danger" title="Eliminar proyecto" disabled={busy===p.id}
+          <button className="danger" title={`Eliminar el proyecto ${p.name}`}
+           aria-label={`Eliminar el proyecto ${p.name}`} disabled={busy===p.id}
            onClick={()=>remove(p)}>🗑</button>
          </div>
         </div>
@@ -243,9 +284,10 @@ export default function Dashboard({open}:{open:(id:number)=>void}){
         <div className="tpl-head">
          <strong>{t.name}</strong>
          <div className="tpl-acts">
-          <button title={`Editar ${t.name}`} disabled={busy===-t.id}
+          {/* 7X: mismo defecto que en los botones de proyecto. */}
+          <button title={`Editar ${t.name}`} aria-label={`Editar la plantilla ${t.name}`} disabled={busy===-t.id}
            onClick={()=>openEditor(t)}>✎</button>
-          <button className="danger" title="Eliminar plantilla" disabled={busy===-t.id}
+          <button className="danger" title={`Eliminar la plantilla ${t.name}`} aria-label={`Eliminar la plantilla ${t.name}`} disabled={busy===-t.id}
            onClick={()=>removeTemplate(t)}>🗑</button>
          </div>
         </div>
@@ -257,6 +299,25 @@ export default function Dashboard({open}:{open:(id:number)=>void}){
        </div>
       ))}
      </div>}
+   </section>
+
+   {/* 9I - auditoria AGREGADA de enlaces publicos del propietario.
+       Vive en el panel de proyectos (sin navegacion nueva): el backend filtra
+       por propiedad y aqui solo se decide CUANDO cargar (al abrir), para no
+       frenar el Dashboard en cada arranque. */}
+   <section className="card dash-public-links">
+    <div className="tpl-head">
+     <h2>Enlaces públicos</h2>
+     <button aria-expanded={verEnlaces}
+      onClick={()=>setVerEnlaces(v=>!v)}>
+      {verEnlaces?'Ocultar listado':'Ver mis enlaces'}
+     </button>
+    </div>
+    <p className="hint">
+     Auditoría de lo que has publicado: qué enlace está activo, qué caducó y
+     qué revocaste, sin entrar composición por composición.
+    </p>
+    {verEnlaces&&<PublicLinksList id="listado-enlaces-9i"/>}
    </section>
   </main>
  );

@@ -1,4 +1,4 @@
-:root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111827;background:#f4f6f4}*{box-sizing:border-box}body{margin:0;overflow-x:hidden}button,input,select{font:inherit}button{border:0;border-radius:10px;padding:10px 14px;background:#e5e7eb;cursor:pointer}button:hover{filter:brightness(.98)}button:disabled{opacity:.5;cursor:not-allowed}.primary{background:#1f8f2b;color:#fff}.danger{background:#dc2626;color:#fff}.page{max-width:1250px;margin:auto;padding:36px}.hero{padding:36px;border-radius:24px;background:linear-gradient(135deg,#17351c,#2d8d35);color:white;margin-bottom:24px}.hero h1{font-size:42px;line-height:1.05;max-width:760px;margin:8px 0 14px}.hero p{max-width:720px;font-size:17px;opacity:.9}.eyebrow{font-size:12px;letter-spacing:.16em;font-weight:800}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:24px}.card{background:white;border:1px solid #e5e7eb;border-radius:18px;padding:22px;box-shadow:0 8px 24px #00000008}.card h2{margin-top:0}.card input[type=file]{display:block;margin:18px 0;width:100%}.card>button{margin-right:8px}.import-result{margin-top:20px;padding-top:16px;border-top:1px solid #e5e7eb}.import-result input{width:100%;padding:11px;border:1px solid #d1d5db;border-radius:10px;margin-bottom:12px}.project{display:flex;flex-direction:column;text-align:left;width:100%;margin:8px 0;background:#f8faf8;border:1px solid #e5e7eb}.project small,.item small{display:block;color:#6b7280;margin-top:4px}.editor-page{height:100vh;display:flex;flex-direction:column}.topbar{height:68px;background:#fff;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:20px;padding:0 18px}.topbar>div:nth-child(2){display:flex;flex-direction:column;flex:1}.topbar span{font-size:12px;color:#6b7280}.actions{display:flex;gap:8px}.workspace{display:grid;grid-template-columns:var(--side-w,260px) 6px minmax(0,1fr) 250px;min-height:0;flex:1;overflow:hidden}.splitter{background:#e5e7eb;cursor:col-resize;touch-action:none}.splitter:hover,.splitter.dragging{background:#1f8f2b}.sidebar,.inspector{background:#fff;padding:18px;overflow:auto;border-right:1px solid #e5e7eb}.inspector{border-right:0;border-left:1px solid #e5e7eb}.sidebar h3{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#374151;margin:6px 0 10px}.item{width:100%;text-align:left;background:#f9fafb;border:1px solid #e5e7eb;margin:5px 0}.item b{font-size:13px}.hint{font-size:12px;color:#6b7280;line-height:1.5}.canvas-panel{padding:22px;overflow:auto;background:#eef1ee}.canvas-wrap{position:relative;background:white;border:1px solid #d1d5db;border-radius:14px;padding:12px;width:max-content;box-shadow:0 8px 30px #00000010}.stage{background:#fff}.canvas-help{font-size:12px;color:#6b7280;padding:8px}.floating{position:absolute;right:18px;bottom:38px}.export{position:absolute;right:18px;top:18px;background:#111827;color:white;z-index:2}
+:root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111827;background:#f4f6f4}*{box-sizing:border-box}body{margin:0;overflow-x:hidden}button,input,select{font:inherit}button{border:0;border-radius:10px;padding:10px 14px;background:#e5e7eb;cursor:pointer}button:hover{filter:brightness(.98)}button:disabled{opacity:.5;cursor:not-allowed}.primary{background:#1a7523;color:#fff}.danger{background:#dc2626;color:#fff}.page{max-width:1250px;margin:auto;padding:36px}.hero{padding:36px;border-radius:24px;background:linear-gradient(135deg,#17351c,#2d8d35);color:white;margin-bottom:24px}.hero h1{font-size:42px;line-height:1.05;max-width:760px;margin:8px 0 14px}.hero p{max-width:720px;font-size:17px;opacity:.9}.eyebrow{font-size:12px;letter-spacing:.16em;font-weight:800}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:24px}.card{background:white;border:1px solid #e5e7eb;border-radius:18px;padding:22px;box-shadow:0 8px 24px #00000008}.card h2{margin-top:0}.card input[type=file]{display:block;margin:18px 0;width:100%}.card>button{margin-right:8px}.import-result{margin-top:20px;padding-top:16px;border-top:1px solid #e5e7eb}.import-result input{width:100%;padding:11px;border:1px solid #d1d5db;border-radius:10px;margin-bottom:12px}.project{display:flex;flex-direction:column;text-align:left;width:100%;margin:8px 0;background:#f8faf8;border:1px solid #e5e7eb}.project small,.item small{display:block;color:#5b6472;margin-top:4px}.editor-page{height:100vh;display:flex;flex-direction:column}.topbar{height:68px;background:#fff;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:20px;padding:0 18px}.topbar>div:nth-child(2){display:flex;flex-direction:column;flex:1}.topbar span{font-size:12px;color:#5b6472}.actions{display:flex;gap:8px}.workspace{display:grid;grid-template-columns:var(--side-w,260px) 6px minmax(0,1fr) 250px;min-height:0;flex:1;overflow:hidden}.splitter{background:#e5e7eb;cursor:col-resize;touch-action:none}.splitter:hover,.splitter.dragging{background:#1f8f2b}.sidebar,.inspector{background:#fff;padding:18px;overflow:auto;border-right:1px solid #e5e7eb}.inspector{border-right:0;border-left:1px solid #e5e7eb}.sidebar h3{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#374151;margin:6px 0 10px}.item{width:100%;text-align:left;background:#f9fafb;border:1px solid #e5e7eb;margin:5px 0}.item b{font-size:13px}.hint{font-size:12px;color:#5b6472;line-height:1.5}.canvas-panel{padding:22px;overflow:auto;background:#eef1ee}.canvas-wrap{position:relative;background:white;border:1px solid #d1d5db;border-radius:14px;padding:12px;width:max-content;box-shadow:0 8px 30px #00000010}.stage{background:#fff}.canvas-help{font-size:12px;color:#5b6472;padding:8px}.floating{position:absolute;right:18px;bottom:38px}.export{position:absolute;right:18px;top:18px;background:#111827;color:white;z-index:2}
 @media(max-width:1000px){.grid2{grid-template-columns:1fr}.hero h1{font-size:32px}}@media(max-width:820px){.page{padding:18px}.hero{padding:24px}}
 
 .canvas-panel{display:flex;flex-direction:column;min-width:0;padding:12px;overflow:hidden}
@@ -30,7 +30,7 @@
 .review-block h3{margin:0 0 8px;font-size:13px}
 .review-block h4{margin:8px 0 4px;font-size:12px;color:#374151}
 .review-table{width:100%;border-collapse:collapse;font-size:12px}
-.review-table th{text-align:left;padding:4px 6px;color:#6b7280;font-weight:600}
+.review-table th{text-align:left;padding:4px 6px;color:#5b6472;font-weight:600}
 .review-table td{padding:3px 6px;border-top:1px solid #f3f4f6}
 .review-table input{width:100%;padding:5px 7px;border:1px solid #d1d5db;border-radius:7px;background:#fff}
 .review-table tr.bad input{border-color:#f59e0b;background:#fffbeb}
@@ -44,7 +44,7 @@
 .song-row{display:flex;align-items:center;gap:8px;border:1px solid #e5e7eb;border-radius:12px;background:#f8faf8;padding:10px 12px;margin:8px 0}
 .song-info{flex:1;min-width:0}
 .song-info strong{display:block;font-size:14px}
-.song-info small{color:#6b7280;font-size:12px}
+.song-info small{color:#5b6472;font-size:12px}
 .song-row button{padding:7px 10px;font-size:13px}
 @media(max-width:900px){.proj-grid{grid-template-columns:1fr}}
 
@@ -53,7 +53,7 @@
 .sugg h3{font-size:13px;margin:12px 0 6px;color:#374151}
 .sugg-collapsed{margin:12px 0}
 .sugg-row{border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px;margin:6px 0;background:#f8faf8}
-.sugg-row small{display:block;color:#6b7280;margin-top:2px;font-size:12px}
+.sugg-row small{display:block;color:#5b6472;margin-top:2px;font-size:12px}
 .sugg-row small.reason{color:#1f5c26}
 .hint.ok{color:#1f5c26}
 .hint.warn{color:#92400e}
@@ -69,7 +69,7 @@
 .inspector-header h3{margin:0;font-size:14px}
 .lock-btn{font-size:11px;font-weight:600;padding:5px 8px;border-radius:8px;border:1px solid #d1d5db;background:#f9fafb;cursor:pointer}
 .lock-btn.locked{background:#fef3c7;border-color:#f59e0b;color:#92400e}
-.pos-idx{font-size:11px;font-weight:700;color:#6b7280;min-width:32px}
+.pos-idx{font-size:11px;font-weight:700;color:#5b6472;min-width:32px}
 
 .editor-title-box{display:flex;flex-direction:column;flex:1;min-width:0}
 .editor-subtitle{font-size:12px;color:#4b5563}
@@ -97,7 +97,7 @@
 
 .comp-global-row{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid #e5e7eb;border-radius:10px;margin:6px 0;background:#f8faf8}
 .comp-info strong{display:block;font-size:13px}
-.comp-info small{color:#6b7280;font-size:11px}
+.comp-info small{color:#5b6472;font-size:11px}
 
 .req-panel{border:1px solid #e5e7eb;border-radius:12px;padding:12px;margin:12px 0;background:#fff}
 .req-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
@@ -110,18 +110,18 @@
 .req-status.covered{color:#1f8f2b}
 .req-status.partial{color:#b45309}
 .req-status.missing{color:#dc2626}
-.req-totals{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;padding-top:8px;border-top:1px dashed #e5e7eb;font-size:11px;color:#6b7280}
+.req-totals{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;padding-top:8px;border-top:1px dashed #e5e7eb;font-size:11px;color:#5b6472}
 .req-totals b{color:#111827}
 
 /* UX-2: panel de personas y asignaciones */
 .person-panel{margin-top:10px}
 .pp-search{width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:8px;background:#fff;margin:2px 0 8px}
-.pp-group h4{margin:8px 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#6b7280}
+.pp-group h4{margin:8px 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#5b6472}
 .pp-item{display:block;width:100%;text-align:left;padding:6px 9px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;margin-bottom:4px}
 .pp-item:hover{border-color:#22c55e}
 .pp-item.sel{border-color:#1f8f2b;box-shadow:0 0 0 1px #1f8f2b inset;background:#f0fdf2}
 .pp-item b{display:block;font-size:12.5px;color:#111827}
-.pp-item small{display:block;font-size:11px;color:#6b7280;margin-top:2px}
+.pp-item small{display:block;font-size:11px;color:#5b6472;margin-top:2px}
 .pp-item .pp-main b{font-size:12.5px}
 .pp-item .pp-main small{font-size:11px}
 
@@ -138,13 +138,13 @@
 .pp-form-actions{display:flex;gap:6px}
 .side-tabs{display:flex;gap:4px;flex:1}
 .side-tab{flex:1;padding:9px 4px;font-size:12.5px;font-weight:600;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:8px;min-height:44px}
-.side-tab.active{background:#1f8f2b;color:#fff;border-color:#1f8f2b}
+.side-tab.active{background:#1a7523;color:#fff;border-color:#1a7523}
 .side-scroll{overflow-y:auto;min-height:0}
 .sidebar{display:flex;flex-direction:column;gap:0}
 .sidebar .side-scroll{flex:1}
 .marimba-panel .pp-item{display:block;width:100%;text-align:left}
 .marimba-panel .pp-item b{display:block;font-size:12.5px}
-.marimba-panel .pp-item small{display:block;font-size:11px;color:#6b7280;margin-top:2px}
+.marimba-panel .pp-item small{display:block;font-size:11px;color:#5b6472;margin-top:2px}
 .marimba-panel .tpl-toggle{background:#f0fdf2;border-color:#bfe5c3;font-weight:600}
 .canvas-top-bar .zoom-controls button{min-height:34px}
 
@@ -201,7 +201,7 @@
 .dash .project{display:flex;align-items:stretch;gap:6px;margin:0;padding:0;overflow:hidden}
 .project-open{flex:1;min-width:0;text-align:left;background:none;border:0;padding:11px 13px;cursor:pointer;border-radius:0}
 .project-open strong{display:block;font-size:14px}
-.project-open small{display:block;color:#6b7280;font-size:11.5px;margin-top:3px;overflow-wrap:anywhere}
+.project-open small{display:block;color:#5b6472;font-size:11.5px;margin-top:3px;overflow-wrap:anywhere}
 .project-btns{display:flex;align-items:center;gap:4px;padding-right:8px}
 .project-btns button{min-width:40px;min-height:40px;padding:6px 9px;border-radius:9px}
 .dash-templates{margin-top:20px}
@@ -217,7 +217,7 @@
 .dash-grid{align-items:start}
 .dash-grid>*{min-width:0}
 .mp-group{margin-bottom:8px}
-.mp-group-name{display:block;font-size:11px;font-weight:700;color:#6b7280;margin:4px 0 4px;overflow-wrap:anywhere}
+.mp-group-name{display:block;font-size:11px;font-weight:700;color:#5b6472;margin:4px 0 4px;overflow-wrap:anywhere}
 .chip.slot{white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
 .chip.slot b{font-weight:800;opacity:.65;margin-left:3px}
 .chip.slot.full{opacity:.55}
@@ -247,7 +247,7 @@
 .mp-row.locked{background:#f9fafb}
 .mp-row>.pp-main{flex:1;min-width:0;text-align:left;border:0;background:none;padding:6px 9px;cursor:pointer;border-radius:0}
 .mp-row>.pp-main b{display:block;font-size:12.5px}
-.mp-row>.pp-main small{display:block;font-size:11px;color:#6b7280;margin-top:2px}
+.mp-row>.pp-main small{display:block;font-size:11px;color:#5b6472;margin-top:2px}
 .mp-slots{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0 4px}
 .chip.slot{cursor:pointer;border:1px solid #d1d5db;background:#f3f4f6;color:#374151;font-size:11px;padding:5px 9px;min-height:32px}
 .chip.slot.occ{background:#dcfce7;border-color:#86efac;color:#166534}
@@ -274,4 +274,302 @@
  .topbar .actions{flex-wrap:wrap}
  .drawer-close{display:inline-flex}
  .inspector.drawer{width:min(400px,96vw)}
+}
+
+/* --- Fase 7A: panel unico de propuesta (computadora y tablet) --- */
+.proposal{display:flex;flex-direction:column;gap:12px}
+.proposal .hint{font-size:13px;line-height:1.5;opacity:.75}
+.proposal-summary{font-size:14px;padding:8px 10px;border-radius:8px;
+ background:rgba(255,255,255,.06)}
+.proposal-table{width:100%;border-collapse:collapse;font-size:13px}
+.proposal-table th{text-align:left;font-weight:600;opacity:.7;padding:6px 4px}
+.proposal-table td{padding:6px 4px;border-top:1px solid rgba(255,255,255,.08)}
+.proposal-table .muted{opacity:.55}
+.proposal-table .row-change{background:rgba(255,214,102,.08)}
+.proposal-table .prop-new{color:#ffd666;font-weight:600}
+.proposal-actions{display:flex;flex-wrap:wrap;gap:8px}
+/* Area tactil adecuada para tablet (minimo 44px de alto). */
+.proposal-actions button{min-height:44px;padding:0 14px;cursor:pointer}
+.proposal .error{color:#ff7875;font-size:13px}
+@media (max-width:820px){
+ .proposal-table{font-size:12px}
+ .proposal-actions button{flex:1 1 auto;min-width:120px}
+}
+
+/* ============ Fase 7B.4 - tableta y computadora ============ */
+/* Objetivo: las mismas funciones en escritorio y tableta, sin reconstruccion.
+   Criterios: areas tactiles de 44px, paneles que se vuelven cajon en pantallas
+   estrechas, y NINGUN desplazamiento horizontal involuntary. */
+
+.dash-search{display:flex;gap:8px;align-items:center;margin:0 0 10px}
+.dash-search input{flex:1;min-width:0;min-height:44px;padding:8px 12px;font-size:15px}
+.dash-search button{min-width:44px;min-height:44px;padding:0 12px;cursor:pointer}
+.empty-search{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.empty-search button{min-height:44px;padding:0 12px;cursor:pointer}
+
+.note-editor{display:flex;flex-direction:column;gap:8px;margin:10px 0;
+ padding:10px;border:1px solid rgba(255,255,255,.12);border-radius:8px}
+.note-editor header{display:flex;flex-wrap:wrap;gap:6px;align-items:baseline}
+.note-editor .note-target{font-size:12px;opacity:.7}
+.note-editor .field{display:flex;flex-direction:column;gap:4px;font-size:13px}
+.note-editor input,.note-editor textarea{min-height:44px;padding:8px;
+ font-size:14px;width:100%;box-sizing:border-box}
+.note-editor textarea{resize:vertical;min-height:72px}
+.note-editor small{font-size:11px;opacity:.6}
+.note-editor button.ghost{min-height:44px;padding:0 12px;cursor:pointer;
+ align-self:flex-start}
+
+.mass-export{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:10px 0}
+.mass-export button{min-height:44px;padding:0 14px;cursor:pointer}
+.mass-export progress{flex:1;min-width:140px;height:8px}
+.export-result{width:100%;font-size:13px;padding:8px 10px;border-radius:8px}
+.export-result.ok{background:rgba(34,197,94,.12)}
+.export-result.warn{background:rgba(234,179,8,.14)}
+.export-result ul{margin:6px 0 0;padding-left:18px}
+
+/* --- Punto de corte de tableta: paneles en columna y lienzo a pantalla
+   completa. El lienzo NUNCA queda oculto de forma permanente. --- */
+@media (max-width:1024px){
+ .project-grid,.proj-list{grid-template-columns:1fr}
+ /* Los botones de la barra superior del lienzo se agrupan y se agrandan. */
+ .canvas-top-bar{flex-wrap:wrap;gap:8px}
+ .canvas-top-bar button{min-width:44px;min-height:44px;font-size:15px}
+ .zoom-controls{flex-wrap:wrap;gap:6px}
+}
+@media (max-width:820px){
+ /* Orientacion vertical de tableta: la barra lateral pasa a ocupar el ancho
+    completo ENCIMA del lienzo, en vez de robarle ancho de forma permanente.
+    Se usan las clases reales del proyecto (.sidebar / .side-scroll). */
+ .sidebar{width:100%!important;max-width:100%!important}
+ .workspace{flex-direction:column}
+ .side-tabs{position:sticky;top:0;z-index:5}
+ .side-tab{min-height:44px;padding:0 12px}
+ .side-scroll{max-height:none}
+ .inspector.drawer{max-width:100%;width:100%}
+ .proposal-actions button{flex:1 1 auto;min-width:110px}
+ /* Las tablas de la previsualizacion pasan a scroll propio en vez de
+    desbordar la pantalla. */
+ .proposal-table{display:block;overflow-x:auto;white-space:normal}
+}
+@media (max-width:600px){
+ .proposal-summary{font-size:13px}
+ .canvas-top-bar .export{width:100%}
+ .proj-list .project-btns button{min-width:44px;min-height:44px}
+}
+/* Respeto a la preferencia de menos animaciones del sistema. */
+@media (prefers-reduced-motion:reduce){
+ *{animation-duration:.01ms!important;transition-duration:.01ms!important}
+}
+
+/* ============ Fase 7C - acceso y administracion ============ */
+.auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;
+ padding:16px;background:#0f172a}
+.auth-card{width:100%;max-width:380px;display:flex;flex-direction:column;gap:12px;
+ background:#1f2937;color:#f9fafb;padding:24px;border-radius:12px;
+ box-shadow:0 10px 30px rgba(0,0,0,.4)}
+.auth-card h1{font-size:20px;margin:0}
+.auth-card .field{display:flex;flex-direction:column;gap:4px;font-size:13px;color:#e5e7eb}
+.auth-card input{min-height:44px;padding:8px 10px;font-size:15px;border-radius:8px;
+ border:1px solid #4b5563;background:#111827;color:#f9fafb;box-sizing:border-box}
+.auth-card button{min-height:44px;padding:0 14px;cursor:pointer;border-radius:8px}
+.auth-card .field{display:flex;flex-direction:column;gap:4px;font-size:13px;color:#e5e7eb}
+/* 7I: axe-core marcaba `color-contrast` SERIO en las etiquetas y en el
+   texto de relleno del formulario de acceso. Se fijan colores con contraste
+   calculado sobre el fondo de la tarjeta (#1f2937), en vez de depender del
+   gris por defecto del navegador, que no cumple 4.5:1. */
+.auth-card .field>span{color:#e5e7eb}
+.auth-card .hint{color:#cbd5e1}
+.auth-card input::placeholder{color:#9ca3af;opacity:1}
+.auth-card button.link{background:none;border:none;color:#93c5fd;text-decoration:underline}
+.auth-err{color:#ff7875;font-size:13px;margin:0}
+.auth-ok{color:#4ade80;font-size:13px;margin:0}
+
+.session-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;
+ padding:8px 12px;background:#1f2937;color:#f9fafb;font-size:13px}
+.session-bar span{margin-right:auto}
+.session-bar button{min-height:40px;padding:0 12px;cursor:pointer;border-radius:8px}
+
+.admin{max-width:960px;margin:0 auto;padding:16px;display:flex;flex-direction:column;gap:18px}
+.admin-head{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.admin-create,.admin-list{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;
+ display:flex;flex-direction:column;gap:10px}
+.admin-create h2,.admin-list h2{margin:0;font-size:16px}
+.admin-list input{min-height:44px;padding:8px 10px;font-size:15px}
+.admin-list table{width:100%;border-collapse:collapse;font-size:14px}
+.admin-list th{text-align:left;padding:8px 6px;border-bottom:1px solid #e5e7eb}
+.admin-list td{padding:8px 6px;border-bottom:1px solid #f3f4f6}
+.admin-list button{min-height:40px;padding:0 10px;cursor:pointer}
+@media (max-width:820px){
+ .admin{padding:10px}
+ .admin-list table{font-size:12px}
+ .admin-list button{min-height:44px}
+}
+
+/* ============ Fase 7D - compartir y permisos ============ */
+.access-badge{display:inline-block;padding:2px 10px;border-radius:999px;
+ font-size:12px;font-weight:600;margin:0 0 6px}
+.badge{padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600}
+.role-owner{background:#dcfce7;color:#166534}
+.role-editor{background:#dbeafe;color:#1e40af}
+.role-reader{background:#f3f4f6;color:#4b5563}
+
+.share-panel{border:1px solid #e5e7eb;border-radius:10px;padding:12px;
+ margin-top:14px;background:#fafafa}
+.share-panel h3{margin:0 0 6px;font-size:15px}
+.share-list{list-style:none;margin:10px 0;padding:0;display:flex;
+ flex-direction:column;gap:6px}
+.share-list li{display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+ padding:8px;background:#fff;border:1px solid #e5e7eb;border-radius:8px}
+.share-who{display:flex;flex-direction:column;flex:1;min-width:140px}
+.share-who small{color:#5b6472;font-size:12px}
+.share-list button{min-height:40px;padding:0 10px;cursor:pointer}
+.share-add{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.share-add input{flex:1;min-width:160px;min-height:44px;padding:0 10px}
+.share-add select{min-height:44px;padding:0 8px}
+.share-add button{min-height:44px;padding:0 14px;cursor:pointer}
+@media (max-width:820px){
+ .share-list li{align-items:flex-start}
+ .share-who{width:100%}
+ .share-add{flex-direction:column}
+ .share-add input,.share-add select,.share-add button{width:100%}
+}
+
+.acc-wrap{overflow:auto;padding:18px;background:#eef1ee;flex:1;min-height:0}
+/* 7M: estos dos titulos pasaron de <h3> a <h2> para corregir `heading-order`
+   (el editor empieza en <h1>, asi que un <h3> saltaba un nivel). El navegador
+   daria al <h2> un tamano mayor, asi que se fija aqui el MISMO valor que tenia
+   el <h3> por defecto: el aspecto no cambia, solo la semantica. */
+.side-scroll h2{font-size:1.17em;margin:1em 0;font-weight:bold}
+/* 7M: los subtítulos de los paneles laterales pasaron de <h4> a <h3> para que
+   la jerarquía del editor sea h1 -> h2 -> h3. Se fija el tamaño que tenía el
+   <h4> por defecto: el aspecto no cambia, solo la semántica. */
+.pp-group h3{font-size:1em;margin:0 0 6px;font-weight:bold}
+/* 7K: encabezado real solo para lectores de pantalla. No oculta nada con
+   `display:none` (eso lo sacaría del árbol de accesibilidad) ni cambia el
+   aspecto: se conserva en el flujo pero sin ocupar espacio. */
+.sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.acc-editor{background:#fff;border:1px solid #d1d5db;border-radius:14px;padding:18px;max-width:900px;margin:0 auto}
+.acc-editor h2{margin-top:0}
+.acc-editor h3{margin-bottom:4px}
+.acc-editor h4{margin:14px 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#374151}
+.acc-fieldset{border:1px solid #d1d5db;border-radius:10px;padding:12px;margin:14px 0}
+.acc-fieldset legend{padding:0 6px;font-weight:600}
+.acc-fieldset select{width:100%;min-height:44px;padding:8px;border:1px solid #d1d5db;border-radius:8px;background:#fff}
+.acc-fieldset .primary{margin-top:10px}
+.acc-live{min-height:22px;margin:8px 0;font-weight:600;color:#1f5c26}
+.acc-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.acc-toolbar button,.acc-slots button{min-height:44px}
+.acc-slots{list-style:none;padding:0;margin:8px 0}
+/* 7M: controles de mover la marimba con teclado. */
+.acc-mover{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.acc-mover button{min-width:48px;min-height:48px;font-size:18px}
+.acc-coords{display:flex;gap:12px;flex-wrap:wrap;margin:8px 0}
+.acc-coords .field{flex:1 1 150px;min-width:140px}
+.acc-coords input{min-height:44px}
+.acc-slots li{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid #eef2f0}
+.acc-marimba{border-top:1px solid #e5e7eb;margin-top:14px;padding-top:10px}
+.acc-lock{font-weight:600;color:#92400e}
+@media(max-width:820px){.acc-editor{padding:12px}.acc-slots li{align-items:flex-start}}
+/* --- Fase 9C: historial de versiones ------------------------------------- */
+.version-history{margin-top:16px}
+.version-history h2{margin:0 0 4px}
+.vh-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+/* El anuncio tiene altura propia reservada: si no, apareceria y el salto de
+   linea que provoca al mostrarse desplace la lista bajo el cursor. */
+.vh-status{min-height:1.4em;margin:6px 0;color:#2f6f3e;font-size:13px}
+.vh-list{list-style:none;margin:8px 0 0;padding:0}
+.vh-item{display:flex;justify-content:space-between;align-items:center;gap:10px;
+  padding:8px 0;border-top:1px solid #e3e8e3}
+.vh-meta{display:flex;flex-direction:column;min-width:0}
+.vh-meta small{color:#5b6472}
+/* --- Fase 9D: vista de ensayo / impresion -------------------------------- */
+/* Es una CAPA SUPERPUESTA, no un panel mas: se abre desde la barra de
+   herramientas, donde el lienzo esta por encima y la taparia. Cubre el area de
+   trabajo y trae su propio desplazamiento. En impresion vuelve a ser flujo
+   normal (ver `@media print` al final). */
+.rehearsal{position:fixed;inset:0;z-index:40;overflow:auto;background:#fff;
+  color:#111827;padding:20px}
+.rh-toolbar{display:flex;gap:8px;justify-content:space-between;margin-bottom:14px}
+.rh-head{border-bottom:2px solid #111827;padding-bottom:10px;margin-bottom:16px}
+.rh-kicker{margin:0;font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:#4b5563;font-weight:700}
+/* El titulo usa texto, no color: la informacion no depende del color. */
+.rh-head h1{margin:2px 0;font-size:26px}
+.rh-sub{margin:0;font-size:15px;color:#374151}
+.rh-meta{margin:6px 0 0;font-size:12px;color:#4b5563}
+.rh-marimba{margin:0 0 18px}
+/* `break-inside: avoid` evita que una marimba se parta entre dos paginas. */
+.rh-marimba{break-inside:avoid;page-break-inside:avoid}
+.rh-marimba h2{margin:0 0 6px;font-size:18px}
+.rh-lock{font-weight:400;font-size:12px;color:#4b5563}
+.rh-note{margin:0 0 6px;font-size:13px}
+.rh-note strong{margin-right:6px}
+.rh-table{width:100%;border-collapse:collapse;font-size:14px}
+.rh-table th,.rh-table td{border-bottom:1px solid #d1d5db;padding:6px 8px;
+  text-align:left;vertical-align:top}
+.rh-table thead th{border-bottom:2px solid #374151;font-size:12px;
+  text-transform:uppercase;letter-spacing:.06em;color:#374151}
+.rh-table tbody th{font-weight:600;width:38%}
+/* El vacante se distingue por la PALABRA "Vacante", no solo por el color. */
+.rh-vacante-txt{color:#6b7280}
+.rh-vacant td,.rh-vacant th{color:#4b5563}
+.rh-idx{font-weight:400;color:#6b7280;font-size:12px}
+.rh-chip{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:9px;
+  background:#e5e7eb;color:#111827;font-size:11px}
+.rh-comment{display:block;color:#4b5563;font-size:12px}
+.rh-unassigned{break-inside:avoid;page-break-inside:avoid;
+  border-top:2px solid #111827;padding-top:10px}
+.rh-unassigned ul{margin:6px 0 0;padding-left:20px}
+.rh-unassigned li{margin:4px 0}
+
+@media print{
+ /* La composicion tiene varias marimbas lado a lado: en vertical se
+    partirian y quedarian ilegibles. */
+ @page{size:A4 landscape;margin:12mm}
+ body{background:#fff}
+ /* Se oculta TODO lo que no es la vista: navegacion, barra, botones,
+    inspector, lienzo y el resto del editor. */
+ .topbar,.sidebar,.inspector,.canvas-panel,.rh-toolbar,.auth-card,.modal,
+ .confirm-backdrop,.vh-actions{display:none!important}
+ .rehearsal{position:static;max-width:none;margin:0;padding:0;font-size:11pt;
+  overflow:visible}
+ .rh-marimba h2{font-size:14pt}
+ .rh-table{font-size:10.5pt}
+ .rh-table th,.rh-table td{padding:3px 6px}
+}
+
+/* 9I - listado agregado de enlaces publicos (PublicLinksList) */
+.pl-table{width:100%;border-collapse:collapse}
+.pl-table caption{text-align:left;padding:2px 0 8px;font-size:13px;opacity:.85}
+.pl-table th,.pl-table td{text-align:left;padding:8px 10px;
+ border-bottom:1px solid rgba(128,128,128,.35);vertical-align:top}
+.pl-table th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;opacity:.85}
+/* Oculto para la vista, visible para lectores de pantalla (no display:none,
+   que lo sacaria del arbol de accesibilidad). */
+.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+ overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* --- Fase 9E: enlace publico de solo lectura ------------------------------ */
+/* La pagina NO tiene sesion ni navegacion: banner minimo + la proyeccion de
+   la vista de ensayo. Dentro de `pub-page` la vista deja de ser capa
+   superpuesta (`position:fixed` taparia el banner y no se podria ver). */
+.pub-banner{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline;
+  justify-content:space-between;padding:8px 20px;background:#111827;color:#fff;
+  font-size:13px}
+.pub-banner strong{letter-spacing:.06em;text-transform:uppercase;font-size:12px}
+.pub-banner span{color:#d1d5db}
+.pub-page .rehearsal{position:static;z-index:auto;inset:auto}
+.pub-error{max-width:640px;margin:56px auto;padding:0 20px}
+.pub-error h1{margin-bottom:10px}
+/* Seccion del enlace dentro del panel «Paneles». */
+.link-panel{border:1px solid #e3e8e3;border-radius:8px;padding:12px;
+  margin:14px 0;background:#fafbfa}
+.link-panel h3{margin:0 0 6px;font-size:15px}
+.link-box{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.link-box input{width:100%;font-size:12px;padding:6px;border:1px solid #d1d5db;
+  border-radius:6px;background:#fff}
+.link-actions{display:flex;gap:8px;flex-wrap:wrap}
+/* En impresion la pagina publica es solo documento: ni banner ni barra. */
+@media print{
+ .pub-banner,.link-panel{display:none!important}
 }

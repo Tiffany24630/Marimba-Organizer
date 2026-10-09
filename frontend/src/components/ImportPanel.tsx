@@ -125,7 +125,13 @@ export default function ImportPanel({onDone,projects,projectId,existingSongNames
    <p>{intoExisting
     ?'Las canciones del archivo se SUMAN a las que ya tiene este proyecto. Nada de lo que ya está se modifica ni se elimina.'
     :'Formato esperado: canciones en la fila 1, puestos musicales en la fila 2 y personas con marcas desde la fila 3. Límite: 10 MB (.xlsx, .xlsm, .xls).'}</p>
-   <input type="file" accept=".xlsx,.xlsm,.xls" onChange={e=>{setFile(e.target.files?.[0]||null);setData(null);setError(null);setResult(null);}}/>
+   {/* 7I: el selector de archivo no tenía etiqueta. Es un `input type=file`
+      sin `label` ni `aria-label`, y axe lo marca como `label` CRITICA: un
+      lector de pantalla solo anuncia "botón de elección de archivo".
+      El texto visible ya explica el formato, asi que se reutiliza como
+      nombre accesible sin cambiar el aspecto ni el comportamiento. */}
+  <input type="file" aria-label="Archivo Excel de canciones (xlsx, xlsm o xls)"
+   accept=".xlsx,.xlsm,.xls" onChange={e=>{setFile(e.target.files?.[0]||null);setData(null);setError(null);setResult(null);}}/>
    <button onClick={run} disabled={!file||busy}>{busy?'Procesando…':'Analizar'}</button>
    {error&&<p className="import-error">⚠ {error}</p>}
 

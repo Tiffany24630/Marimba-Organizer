@@ -22,6 +22,39 @@ export const PERSON_W=150;
 export const PERSON_H=44;
 export const MARIMBA_DEFAULT={width:380,height:150,pad:14,gap:10,slotH:54,slotY:56,minSlotW:104};
 
+/**
+ * Ancho minimo que necesita una marimba para `n` puestos sin que ninguno baje
+ * de `minSlotW` (despejando la formula de `slotRect`).
+ *
+ * Es la MISMA regla que ya aplicaban `addMarimba` y `addPosition`, escrita aqui
+ * para que exista UN solo sitio: el store, el inspector y cualquier UI leen de
+ * aqui en vez de repetir la cuenta.
+ */
+export function minMarimbaWidth(n:number){
+  const slots=Math.max(n,1);
+  return 2*MARIMBA_DEFAULT.pad+slots*MARIMBA_DEFAULT.minSlotW
+   +(slots-1)*MARIMBA_DEFAULT.gap;
+}
+
+/**
+ * Fase 7W - altura minima de una marimba.
+ *
+ * En el modelo actual los puestos ocupan una BANJA vertical FIJA: `slotRect`
+ * devuelve siempre `y = slotY` y `height = slotH`, sin mirar `m.height`. O sea,
+ * la banda es [slotY, slotY+slotH] = [56, 110].
+ *
+ * `height` es el alto del MARCO (`CanvasEditor.tsx:62`, `render.ts:33`). Si
+ * `height` fuese menor que la banda, los puestos se dibujarian por DEBAJO del
+ * marco, fuera de la marimba. Ese minimo no es un numero inventado: es
+ * exactamente el espacio que ocupa la geometria real de los puestos.
+ *
+ * Con el valor por defecto (150) sobra margen, asi que las composiciones
+ * existentes y las legacy ya lo cumplen y NO hace falta migracion.
+ */
+export function minMarimbaHeight():number{
+  return MARIMBA_DEFAULT.slotY+MARIMBA_DEFAULT.slotH;
+}
+
 export function slotRect(m:MarimbaElement,i:number){
  const n=Math.max(m.positions.length,1);
  const w=(m.width-2*MARIMBA_DEFAULT.pad-MARIMBA_DEFAULT.gap*(n-1))/n;

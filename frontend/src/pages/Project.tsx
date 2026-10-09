@@ -1,13 +1,20 @@
 import {useEffect,useState,useRef,useCallback} from 'react';
 import {api} from '../lib/api';
-import {useComposition} from '../store/composition';
+import {useComposition,setReadOnly} from '../store/composition';
 import {clientToWorld} from '../lib/layout';
 import CanvasEditor from '../components/CanvasEditor';
 import Inspector from '../components/Inspector';
-import SuggestionsPanel from '../components/SuggestionsPanel';
-import DistributionPanel from '../components/DistributionPanel';
+import AccessibleEditor from '../components/AccessibleEditor';
+import ProposalPreview from '../components/ProposalPreview';
+import MassExport from '../components/MassExport';
+import SharePanel,{ACCESS_LABEL} from '../components/SharePanel';
+import VersionHistory from '../components/VersionHistory';
+import PublicLinkPanel from '../components/PublicLinkPanel';
+import RehearsalView from '../components/RehearsalView';
+import type {ExportRow} from '../components/MassExport';
 import RequirementsPanel from '../components/RequirementsPanel';
 import PersonPanel,{DRAG_PERSON_MIME} from '../components/PersonPanel';
+import {useConfirm} from '../hooks/useConfirm';
 import MarimbaPanel from '../components/MarimbaPanel';
 import ImportPanel from '../components/ImportPanel';
 import type {Song,Template} from '../types';
@@ -43,9 +50,28 @@ export default function Project({id,onBack}:{id:number;onBack:()=>void}){
  const [saveStatus,setSaveStatus]=useState<'idle'|'saving'|'saved'|'error'>('idle');
   const [newSong,setNewSong]=useState('');
   const [sidebarW,setSidebarW]=useState(280);
+ // 7J: conmutador lienzo <-> vista accesible sin ratón. No guarda estado propio:
+ // la alternativa lee el mismo store, así que las dos vistas son la misma.
+ const [vistaAccesible,setVistaAccesible]=useState(false);
+  // 9D: vista de ensayo/impresion. Es un simple commutador de visualizacion:
+  // no guarda estado propio ni toca el store, solo decide si se muestra.
+  const [verEnsayo,setVerEnsayo]=useState(false);
+ // 7L: confirmación accesible para los cambios sin guardar.
+ const confirmar=useConfirm();
   const [inspectorW,setInspectorW]=useState(260);
   const [resizing,setResizing]=useState<'left'|'right'|null>(null);
  const [showInspector,setShowInspector]=useState(false);
+ // 7D: nivel de acceso del usuario actual. Solo es UX: la seguridad real la
+ // comprueba el backend en cada ruta.
+ const [access,setAccess]=useState<'owner'|'editor'|'reader'>('owner');
+ const readOnly=access==='reader';
+ useEffect(()=>{
+  // 7E: el modo de solo lectura se aplica UNA vez, en el store, para que cubra
+  // raton, tactil y teclado sin repetir comprobaciones en cada componente.
+  setReadOnly(readOnly);
+  api.projectAccess(id).then(r=>setAccess(r.access)).catch(()=>setAccess('owner'));
+  return ()=>setReadOnly(false);
+ },[id,readOnly]);
  const [sideTab,setSideTab]=useState<'personas'|'marimbas'|'paneles'>('personas');
 
  const {
@@ -165,6 +191,14 @@ const onDrop=useCallback((ev:React.DragEvent<HTMLElement>)=>{
 
  const song:Song|undefined=data?.songs.find((s:Song)=>s.id===openSongId);
  const songRow:SongRow|undefined=songs.find(s=>s.id===openSongId);
+ // 7B.3: una fila por composicion guardada del proyecto, con el nombre de su
+ // cancion para la rotulacion de la imagen.
+ const exportRows:ExportRow[]=(data?.compositions||[]).map((c:CompRow)=>({
+  compositionId:c.id,
+  name:c.name||'',
+  songId:c.song_id,
+  songName:c.song_id!=null?(songs.find((s:SongRow)=>s.id===c.song_id)?.name||null):null,
+ }));
  const songComps:CompRow[]=(data?.compositions||[]).filter((c:CompRow)=>c.song_id===openSongId);
  const compUpdatedAt:string|null=(data?.compositions||[]).find((c:CompRow)=>c.id===compId)?.updated_at||null;
  const detected=Array.from(new Set((song?.assignments||[]).map(a=>a.position)));
@@ -196,9 +230,9 @@ const onDrop=useCallback((ev:React.DragEvent<HTMLElement>)=>{
   setSaveStatus('idle');
  };
 
- const backToSongs=()=>{
+ const backToSongs=async()=>{
   if(isDirty){
-   if(!window.confirm('Tienes cambios sin guardar en esta composición. ¿Deseas salir de todas formas?')){
+   if(!(await confirmar.show({title:'Cambios sin guardar',message:'Tienes cambios sin guardar en esta composición. ¿Deseas salir de todas formas?'}))){
     return;
    }
   }
@@ -206,9 +240,9 @@ const onDrop=useCallback((ev:React.DragEvent<HTMLElement>)=>{
   if(data) reloadSongs(id);
  };
 
- const loadComposition=(cid:number)=>{
+ const loadComposition=async(cid:number)=>{
   if(isDirty){
-   if(!window.confirm('Tienes cambios sin guardar. ¿Deseas cambiar de composición?')){
+   if(!(await confirmar.show({title:'Cambios sin guardar',message:'Tienes cambios sin guardar. ¿Deseas cambiar de composición?'}))){
     return;
    }
   }
@@ -221,9 +255,9 @@ const onDrop=useCallback((ev:React.DragEvent<HTMLElement>)=>{
   setSaveStatus('idle');
  };
 
- const newComposition=()=>{
+ const newComposition=async()=>{
   if(isDirty){
-   if(!window.confirm('Tienes cambios sin guardar. ¿Deseas iniciar una nueva composición?')){
+   if(!(await confirmar.show({title:'Cambios sin guardar',message:'Tienes cambios sin guardar. ¿Deseas iniciar una nueva composición?'}))){
     return;
    }
   }
@@ -235,6 +269,9 @@ const onDrop=useCallback((ev:React.DragEvent<HTMLElement>)=>{
  };
 
  const save=async()=>{
+  // 7E: un lector no guarda. Se comprueba aqui ademas del store, para que ni un
+  // atajo de teclado ni una llamada programatica lleguen a escribir.
+  if(readOnly)return;
   if(!data||openSongId==null)return;
   setSaveStatus('saving');
   try{
@@ -350,7 +387,7 @@ useEffect(()=>{saveRef.current=save;});
  };
 
  const deleteComp=async(cid:number,currentName:string)=>{
-  if(!window.confirm(`¿Eliminar la composición "${currentName}"?\n\nEsta acción NO eliminará la canción, personas ni asignaciones del proyecto.`)){
+  if(!(await confirmar.show({title:'Eliminar la composición',message:`¿Eliminar la composición "${currentName}"?\n\nEsta acción NO eliminará la canción, personas ni asignaciones del proyecto.`,destructive:true}))){
    return;
   }
   try{
@@ -388,10 +425,23 @@ useEffect(()=>{saveRef.current=save;});
        }catch(e:any){alert(e.message);}
       }}>✎</button>
      <h1>{data.project.name}</h1>
+     {/* 7D: indicador de permiso. Un lector ve el aviso y la interfaz se
+         adapta; la seguridad la sigue aplicando el backend. */}
+     <span className={`access-badge role-${access}`}>
+      {ACCESS_LABEL[access]||access}
+     </span>
+     {readOnly&&(
+      <p className="hint warn">Estás viendo este proyecto en modo solo lectura:
+       no puedes modificar ni guardar nada.</p>
+     )}
      <p className="hint">
       {data.project.source_filename?`Excel: ${data.project.source_filename} · `:''}
       {songs.length} canciones · {(data.compositions||[]).length} composiciones
      </p>
+      {/* 7B.3: exportacion masiva de TODAS las composiciones del trabajo.
+          Cada imagen sale de su propia composicion GUARDADA, con el nombre de
+          la cancion rotulado, y no modifica ningun dato. */}
+      <MassExport rows={exportRows}/>
     </header>
 
     <div className="proj-grid">
@@ -435,7 +485,7 @@ useEffect(()=>{saveRef.current=save;});
             if(n&&n.trim())try{await api.renameSong(s.id,n.trim());reloadSongs(id);}catch(e:any){alert(e.message);}
            }}>✎</button>
            <button className="danger" title="Eliminar canción" onClick={async()=>{
-            if(!window.confirm(`¿Eliminar la canción "${s.name}" y sus asignaciones?`))return;
+            if(!(await confirmar.show({title:'Eliminar la canción',message:`¿Eliminar la canción "${s.name}" y sus asignaciones?`,destructive:true})))return;
             try{await api.deleteSong(s.id);reloadSongs(id);}catch(e:any){alert(e.message);}
            }}>✕</button>
           </div>
@@ -526,13 +576,22 @@ useEffect(()=>{saveRef.current=save;});
     </div>
 
     <div className="actions">
-     <div className="undo-redo-box">
-      <button disabled={!canUndo} onClick={undo} title="Deshacer (Ctrl+Z)">↶</button>
-      <button disabled={!canRedo} onClick={redo} title="Rehacer (Ctrl+Y)">↷</button>
+     <h1 className="sr-only">{compName||'Composicion sin guardar'}{songRow?`, de ${songRow.name}`:''}</h1>
+      <div className="undo-redo-box">
+      {/* 7X: el contenido es un simbolo, y el contenido tiene prioridad sobre
+          `title` al calcular el nombre accesible: sin `aria-label` un lector de
+          pantalla solo anunciaba "↶". El `title` se conserva como tooltip. */}
+      <button disabled={!canUndo} onClick={undo} title="Deshacer (Ctrl+Z)"
+       aria-label="Deshacer el último cambio">↶</button>
+      <button disabled={!canRedo} onClick={redo} title="Rehacer (Ctrl+Y)"
+       aria-label="Rehacer el cambio deshecho">↷</button>
      </div>
 
+     {/* 7I: este selector no tenía nombre accesible y axe lo marcaba como
+         `select-name` CRITICA: el lector de pantalla anunciaba solo
+         "combo box". La etiqueta no altera el aspecto ni el comportamiento. */}
      {songComps.length>0&&(
-      <select value={compId??''} onChange={e=>{const v=Number(e.target.value);if(v)loadComposition(v);else newComposition();}}>
+      <select aria-label="Composición de esta canción" value={compId??''} onChange={e=>{const v=Number(e.target.value);if(v)loadComposition(v);else newComposition();}}>
        {songComps.map((c:CompRow)=><option key={c.id} value={c.id}>{c.name}</option>)}
        {compId===null&&<option value="">— Nueva (sin guardar) —</option>}
        <option value="">+ Nueva composición...</option>
@@ -541,13 +600,27 @@ useEffect(()=>{saveRef.current=save;});
 
      <input className="cname" value={compName} onChange={e=>{setCompName(e.target.value);markDirty();}} placeholder={songRow?.name||'Nombre de la composición'}/>
 
-     <button className="primary" onClick={save} disabled={saveStatus==='saving'}>
+     <button className="primary" onClick={save} disabled={saveStatus==='saving'||readOnly}>
       {editingSaved?'Guardar':'Guardar'}
      </button>
 
      <button onClick={saveAs} disabled={saveStatus==='saving'||elements.length===0} title="Guardar como una nueva copia independiente (Ctrl+Shift+S)">
       Guardar como...
      </button>
+
+     {/* 7J - conmutador entre el lienzo de Konva y su alternativa accesible.
+          Ambos leen el MISMO estado del store, asi que los cambios se reflejan
+          al instante en cualquiera de las dos. El boton declara su estado con
+          `aria-pressed`, para que se anuncie al activarlo. */}
+    <button className={vistaAccesible?'':'primary'} aria-pressed={vistaAccesible}
+     onClick={()=>setVistaAccesible(v=>!v)}
+     title="Alternar entre el lienzo y la vista accesible sin ratón">
+     {vistaAccesible?'Ver el lienzo':'Edición sin ratón'}
+    </button>
+
+{verEnsayo&&
+     <RehearsalView elements={elements} compName={compName||songRow?.name||''}
+      songName={songRow?.name} onClose={()=>setVerEnsayo(false)}/>}
 
      {editingSaved&&(
       <button className="danger mini" onClick={()=>deleteComp(compId!,compName)} title="Eliminar únicamente esta composición">
@@ -557,8 +630,15 @@ useEffect(()=>{saveRef.current=save;});
     </div>
    </header>
 
-   <div className="workspace" style={{'--side-w':`${sidebarW}px`,'--insp-w':`${inspectorW}px`} as React.CSSProperties}>
-    <aside className="sidebar" style={{width:sidebarW,maxWidth:sidebarW,minWidth:0}}>
+   {vistaAccesible&&(
+    <div className="acc-wrap">
+     <AccessibleEditor readOnly={readOnly}/>
+    </div>
+   )}
+
+   {!vistaAccesible&&(
+    <div className="workspace" style={{'--side-w':`${sidebarW}px`,'--insp-w':`${inspectorW}px`} as React.CSSProperties}>
+    <aside className="sidebar" aria-label="Personas, marimbas y paneles" style={{width:sidebarW,maxWidth:sidebarW,minWidth:0}}>
      <div className="sidebar-head">
       <div className="side-tabs" role="tablist">
        {(['personas','marimbas','paneles'] as const).map(t=>(
@@ -572,7 +652,7 @@ useEffect(()=>{saveRef.current=save;});
      </div>
      {sideTab==='personas'&&(
       <div className="side-scroll">
-       <h3>Personas de la pieza</h3>
+       <h2>Personas de la pieza</h2>
        {(song?.assignments||[]).length===0&&<p className="hint">Sin personas en esta canción.</p>}
        {(song?.assignments||[]).map((a:any)=>{
         const onCanvas=placedPersonIds.has(a.person_id);
@@ -595,27 +675,58 @@ useEffect(()=>{saveRef.current=save;});
      )}
      {sideTab==='paneles'&&(
       <div className="side-scroll">
-       <h3>Puestos detectados</h3>
+       <h2>Puestos detectados</h2>
        {detected.length>0
         ?<div className="chips">{detected.map(p=><span className="chip" key={p}>{p}</span>)}</div>
         :<p className="hint">Sin puestos en esta canción.</p>}
        {openSongId!=null&&(
         <RequirementsPanel songId={openSongId} compositionId={compId} refreshKey={compUpdatedAt} dirty={isDirty}/>
        )}
+        {/* Fase 7A: un solo panel de propuesta. Sustituye a DistributionPanel
+         y SuggestionsPanel: calcula SIEMPRE sobre las marimbas ya colocadas
+         y no persiste hasta pulsar Aplicar. */}
        {openSongId!=null&&songRow&&(
-        <DistributionPanel songId={openSongId} songName={songRow.name}
+        <ProposalPreview songId={openSongId} songName={songRow.name}
          onApplied={(comp:any)=>{
           setData((d:any)=>d?{...d,compositions:[...(d?.compositions||[]),comp]}:d);
           setCompId(comp.id);setCompName(comp.name||'');setElements(comp.data?.elements||[]);select(null);reloadSongs(id);
          }} />
        )}
-       {openSongId!=null&&songRow&&(
-        <SuggestionsPanel songId={openSongId} songName={songRow.name}
-         onApplied={(comp:any)=>{
-          setData((d:any)=>d?{...d,compositions:[...(d?.compositions||[]),comp]}:d);
-          setCompId(comp.id);setCompName(comp.name||'');setElements(comp.data?.elements||[]);select(null);reloadSongs(id);
-         }}/>
-       )}
+       {/* 7D: la seccion Compartir es solo del propietario. El backend la
+        protege igual, esto es solo la interfaz. */}
+       {access==='owner'&&<SharePanel projectId={id}/>}
+        {/* Fase 9C: historial PERSISTENTE de versiones. Es distinto del
+         deshacer/rehacer del lienzo: vive en el servidor y sobrevive a recargar.
+         Se repinta con la via EXISTENTE (`setElements`), sin tocar el store. */}
+        {compId!=null&&
+         <VersionHistory compositionId={compId} readOnly={access==='reader'}
+          onRestored={(comp:any)=>{
+           setData((d:any)=>d?{...d,compositions:(d?.compositions||[])
+            .map((c:any)=>(c.id===comp.id?comp:c))}:d);
+           setCompName(comp.name||'');
+           setElements(comp.data?.elements||[]);
+           select(null);
+           setSaveStatus('idle');
+          }}/>}
+        {/* 9D: la vista de ensayo se abre desde aqui, en el panel lateral, y NO
+          desde la barra del editor. Se coloque alli a proposito: botones nuevos
+          junto a «Guardar» alteran el orden de foco de esa barra y rompen la
+          confirmacion por `blur` de los campos numericos (`Numero`), que es lo
+          que verifica `geometria.spec.ts`. */}
+        {compId!=null&&!verEnsayo&&
+         <div className="rh-launch">
+          <button onClick={()=>setVerEnsayo(true)}
+           title="Abrir la vista de ensayo, pensada para imprimir">
+           Vista de ensayo
+          </button>
+          <p className="hint">Consulta la distribución e imprímela, sin editar.</p>
+         </div>}
+         {/* 9E: gestion del enlace PUBLICO. Igual que 9D, en el panel lateral y
+          NO en la barra del editor: alla cualquier boton nuevo rompe la
+          confirmacion por `blur` de `Numero`. Solo propietario, como en
+          SharePanel: el backend lo exige igual; esto es solo la interfaz. */}
+         {compId!=null&&access==='owner'&&
+          <PublicLinkPanel compositionId={compId}/>}
       </div>
      )}
     </aside>
@@ -627,6 +738,7 @@ useEffect(()=>{saveRef.current=save;});
     <div className={`splitter right ${resizing==='right'?'dragging':''}`} onMouseDown={()=>setResizing('right')} onTouchStart={()=>setResizing('right')} title="Arrastra para cambiar el ancho del inspector" aria-hidden="true"></div>
  <Inspector detectedPositions={detected} drawerOpen={showInspector} onDrawerToggle={setShowInspector} width={inspectorW}/>
    </div>
+   )}
   </main>
  );
 }

@@ -1,12 +1,46 @@
-import {Stage,Layer,Rect,Text,Group,Transformer} from 'react-konva';
+import {Stage,Layer,Rect,Text,Group,Transformer,Circle} from 'react-konva';
 import {useEffect,useLayoutEffect,useRef,useState,useCallback} from 'react';
 import type Konva from 'konva';
 import {useComposition,elementLocked} from '../store/composition';
 import type {MarimbaElement,PersonElement} from '../types';
 import {elementBBox,hitTestSlot,seatScale,syncViewport,slotRect} from '../lib/layout';
 import {useConfirm} from '../hooks/useConfirm';
+import {chipText,commentLines,hasNote} from '../lib/notes';
 
-function MarimbaNode({m,selected}:{m:MarimbaElement;selected:boolean}){
+/**
+ * Fase 7B.1 - insignia de anotaciones.
+ *
+ * `label` (etiqueta breve) se dibuja como chip junto al nombre; `comment` se
+ * recorta a las lineas que caben y NO tapa los puestos: va en una franja
+ * reservada por debajo del nombre. El texto completo se consulta con el
+ * atributo `title` (raton en computadora) o al tocar el chip.
+ */
+function NoteBadge({label,comment,x,y,width,align}:{
+ label?:string;comment?:string;x:number;y:number;width:number;align:'left'|'center';
+}){
+ if(!hasNote({label,comment}))return null;
+ const chip=label?chipText(label):null;
+ return (
+  <Group x={x} y={y} listening={false}>
+   {chip&&(
+    <Group x={align==='center'?x+width/2:x}>
+     <Rect x={align==='center'?-chipText(chip).length*3.2-4:0} y={0}
+      width={chipText(chip).length*6.4+8} height={15} cornerRadius={7}
+      fill="#0ea5e9" opacity={0.95}/>
+     <Text text={chip} x={align==='center'?-chipText(chip).length*3.2:4} y={2}
+      fontSize={10} fill="#ffffff" fontStyle="bold"/>
+    </Group>
+   )}
+   {comment&&(
+    <Text text={comment} x={0} y={chip?17:0} width={width}
+     fontSize={9} fill="#93c5fd" opacity={0.95}
+     height={commentLines(40)*11} ellipsis={true} wrap="word"/>
+   )}
+  </Group>
+ );
+}
+
+function MarimbaNode({m,selected,spacePressed}:{m:MarimbaElement;selected:boolean;spacePressed:boolean}){
  const marimbaDragged=useComposition(s=>s.marimbaDragged);
  const marimbaTransformed=useComposition(s=>s.marimbaTransformed);
  const recordHistory=useComposition(s=>s.recordHistory);
@@ -17,7 +51,7 @@ function MarimbaNode({m,selected}:{m:MarimbaElement;selected:boolean}){
 
  return (
   <Group id={m.id} x={m.x} y={m.y} rotation={m.rotation} scaleX={m.scaleX} scaleY={m.scaleY}
-   draggable={!m.locked}
+   draggable={!m.locked&&!spacePressed}
    onClick={ev=>{ev.cancelBubble=true;select(m.id);}}
    onTap={ev=>{ev.cancelBubble=true;select(m.id);}}
    onDragStart={()=>recordHistory()}
@@ -31,6 +65,10 @@ function MarimbaNode({m,selected}:{m:MarimbaElement;selected:boolean}){
    <Text text={m.name} x={8} y={10} width={m.width-16} align="center" fontSize={17} fontStyle="bold" fill="#ffffff"/>
    {m.locked&&<Text text="🔒" x={m.width-28} y={8} fontSize={14} fill="#f59e0b"/>}
    <Text text={`${m.positions.length} puesto${m.positions.length===1?'':'s'}${m.locked?' · Bloqueada':''}`} x={8} y={33} width={m.width-16} align="center" fontSize={10} fill="#9ca3af"/>
+    {/* 7B.1: anotacion de la MARIMBA, en su propia franja bajo el contador, para
+        no tapar los puestos. */}
+    <NoteBadge label={m.note?.label} comment={m.note?.comment}
+     x={8} y={46} width={m.width-16} align="center"/>
    {m.positions.map((p,i)=>{const r=slotRect(m,i);const isSel=selectedSlot?.marimbaId===m.id&&selectedSlot?.positionId===p.id;return (
     <Group key={p.id}>
      <Rect x={r.x} y={r.y} width={r.width} height={r.height}
@@ -39,12 +77,15 @@ function MarimbaNode({m,selected}:{m:MarimbaElement;selected:boolean}){
       onTap={ev=>{ev.cancelBubble=true;selectSlot({marimbaId:m.id,positionId:p.id});}}/>
      <Text text={p.type} x={r.x} y={r.y+5} width={r.width} align="center" fontSize={11} fill="#d1d5db" listening={false}/>
      <Text text={String(i)} x={r.x+3} y={r.y+r.height-13} fontSize={9} fill="#9ca3af" listening={false}/>
+      {/* 7B.1: anotacion del PUESTO. Solo un punto indicador: un texto largo
+          dentro del puesto taparia al vecino. Se edita y consulta en el Inspector. */}
+      {hasNote(p.note)&&<Circle x={r.x+r.width-7} y={r.y+6} radius={3.5} fill="#0ea5e9" listening={false}/>}
     </Group>);})}
   </Group>
  );
 }
 
-function PersonNode({e,selected}:{e:PersonElement;selected:boolean}){
+function PersonNode({e,selected,spacePressed}:{e:PersonElement;selected:boolean;spacePressed:boolean}){
  const elements=useComposition(s=>s.elements);
  const select=useComposition(s=>s.select);
  const update=useComposition(s=>s.update);
@@ -73,7 +114,7 @@ function PersonNode({e,selected}:{e:PersonElement;selected:boolean}){
  return (
   <Group id={e.id} x={e.x} y={e.y} rotation={rotation} scaleX={assigned?1:e.scaleX} scaleY={assigned?1:e.scaleY}
    offsetX={assigned?pw/2:0} offsetY={assigned?ph/2:0}
-   draggable={!locked}
+   draggable={!locked&&!spacePressed}
    onClick={ev=>{ev.cancelBubble=true;select(e.id);}}
    onTap={ev=>{ev.cancelBubble=true;select(e.id);}}
    onDragStart={()=>{/* the store is mutated only on drag end, so no pre-snapshot is needed */}}
@@ -147,9 +188,11 @@ export default function CanvasEditor(){
  const [size,setSize]=useState({w:900,h:620});
  const [zoom,setZoom]=useState(1);
  const [stagePos,setStagePos]=useState({x:0,y:0});
+ const [spacePressed,setSpacePressed]=useState(false);
  const [cursor,setCursor]=useState<'default'|'grab'|'grabbing'>('default');
  const panStart=useRef<{sx:number;sy:number;px:number;py:number}|null>(null);
  const pinch=useRef<{zoom:number;stx:number;sty:number;dist:number;cx:number;cy:number}|null>(null);
+ const touchMode=useRef<'idle'|'pan'|'pinch'|'element'>('idle');
  useEffect(()=>{const el=wrapRef.current;if(el)el.style.cursor=cursor;},[cursor]);
 
  useLayoutEffect(()=>{
@@ -211,7 +254,17 @@ export default function CanvasEditor(){
  useEffect(()=>{
   const onKey=(ev:KeyboardEvent)=>{
    const tag=(ev.target as HTMLElement|null)?.tagName;
-   if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT')return;
+   const target=ev.target as HTMLElement|null;
+   const isTextTarget=tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||!!target?.isContentEditable;
+   if(isTextTarget)return;
+
+   // Space is an explicit viewport gesture. Native editing controls are
+   // excluded above so their normal keyboard behavior remains intact.
+   if(ev.code==='Space'){
+    ev.preventDefault();
+    setSpacePressed(true);
+    return;
+   }
 
    // Undo / Redo shortcuts
    if((ev.ctrlKey||ev.metaKey)&&ev.key.toLowerCase()==='z'){
@@ -228,10 +281,18 @@ export default function CanvasEditor(){
    if((ev.key==='Delete'||ev.key==='Backspace')&&selectedId){
     if(!isLocked) remove(selectedId);
    }
-   if(ev.key==='Escape'){select(null);selectSlot(null);}
+   if(ev.key==='Escape'){setSpacePressed(false);select(null);selectSlot(null);}
   };
+  const onKeyUp=(ev:KeyboardEvent)=>{if(ev.code==='Space')setSpacePressed(false);};
+  const onBlur=()=>setSpacePressed(false);
   window.addEventListener('keydown',onKey);
-  return()=>window.removeEventListener('keydown',onKey);
+  window.addEventListener('keyup',onKeyUp);
+  window.addEventListener('blur',onBlur);
+  return()=>{
+   window.removeEventListener('keydown',onKey);
+   window.removeEventListener('keyup',onKeyUp);
+   window.removeEventListener('blur',onBlur);
+  };
  },[selectedId,isLocked,remove,select,undo,redo]);
 
  const handleZoomIn=()=>setZoom(z=>Math.min(3,+(z*1.2).toFixed(2)));
@@ -291,7 +352,13 @@ export default function CanvasEditor(){
   setStagePos({x:p.x-wx*newZ,y:p.y-wy*newZ});
  };
  const onStageMouseDown=(e:any)=>{
-  const st=e.target.getStage();if(!st||e.target!==st)return;
+  const st=e.target.getStage();if(!st)return;
+  if(spacePressed){
+   e.evt.preventDefault();
+   const p=st.getPointerPosition();if(p)startPan(p.x,p.y);
+   return;
+  }
+  if(e.target!==st)return;
   select(null);
   const p=st.getPointerPosition();if(!p)return;
   startPan(p.x,p.y);
@@ -306,12 +373,14 @@ export default function CanvasEditor(){
  const onStageMouseLeave=()=>{ if(panStart.current)endPan(); else setCursor('default'); };
  const onStageMouseEnter=(e:any)=>{ const st=e.target.getStage();if(st&&!panStart.current)setCursor('grab'); };
  const onStageTouchStart=(e:any)=>{
-  const st=e.target.getStage();if(!st||e.target!==st)return;
+  const st=e.target.getStage();if(!st)return;
   const t=e.evt.touches;
-  if(t.length===1){
-   select(null);
-   const p=st.getPointerPosition();if(p)startPan(p.x,p.y);
-  }else if(t.length===2){
+  if(t.length>=2){
+   // A second finger cancels the one-finger viewport gesture. The Stage
+   // transform is visual state only, so this does not create a composition
+   // mutation or history entry.
+   panStart.current=null;
+   touchMode.current='pinch';
    select(null);
    const rect=st.container().getBoundingClientRect();
    const a=toStageXY(t[0],rect),b=toStageXY(t[1],rect);
@@ -319,13 +388,26 @@ export default function CanvasEditor(){
    if(dist>10){
     pinch.current={zoom:st.scaleX(),stx:st.x(),sty:st.y(),dist,cx:(a.x+b.x)/2,cy:(a.y+b.y)/2};
    }
+   e.evt.preventDefault();
    setCursor('grabbing');
+   return;
+  }
+  if(t.length===1&&e.target===st){
+   select(null);
+   const p=st.getPointerPosition();if(p)startPan(p.x,p.y);
+   touchMode.current='pan';
+  }else if(t.length===1){
+   touchMode.current='element';
   }
  };
  const onStageTouchMove=(e:any)=>{
   const st=e.target.getStage();if(!st)return;
   const t=e.evt.touches;
-  if(t.length===1&&panStart.current){
+  if(t.length>=2&&touchMode.current!=='pinch'){
+   onStageTouchStart(e);
+   return;
+  }
+  if(t.length===1&&touchMode.current==='pan'&&panStart.current){
    const p=st.getPointerPosition();if(p)doPan(p.x,p.y);
    return;
   }
@@ -346,13 +428,38 @@ export default function CanvasEditor(){
  const onStageTouchEnd=(e:any)=>{
   const st=e.target.getStage();if(!st)return;
   const t=e.evt.touches;
-  if(t.length===0&&panStart.current){endPan();return;}
-  if(t.length<2&&pinch.current){
+  if(pinch.current){
+   // Keep the gesture in viewport mode while one finger remains after a
+   // pinch. Only the final end commits the live Stage transform to React
+   // state, avoiding a one-finger pan or element drag in the transition.
+   if(t.length>0)return;
    setZoom(clampZoom(st.scaleX()));
    setStagePos({x:st.x(),y:st.y()});
    pinch.current=null;
+   panStart.current=null;
+   touchMode.current='idle';
    setCursor('grab');
+   return;
   }
+  if(t.length===0&&panStart.current){
+   endPan();
+   touchMode.current='idle';
+   return;
+  }
+  if(t.length===0)touchMode.current='idle';
+ };
+ const onStageTouchCancel=(e:any)=>{
+  const st=e.target.getStage();
+  if(st){
+   // A cancelled viewport gesture may have moved the live Konva Stage. Keep
+   // that visual viewport in React state, but never write element data/history.
+   if(pinch.current)setZoom(clampZoom(st.scaleX()));
+   if(pinch.current||panStart.current)setStagePos({x:st.x(),y:st.y()});
+  }
+  panStart.current=null;
+  pinch.current=null;
+  touchMode.current='idle';
+  setCursor('default');
  };
 
  const exportPNG=()=>{
@@ -408,12 +515,12 @@ export default function CanvasEditor(){
   <div className="canvas-wrap" ref={wrapRef}>
    <div className="canvas-top-bar">
     <div className="zoom-controls">
-     <button onClick={handleZoomOut} title="Alejar (Zoom -)">－</button>
+     <button onClick={handleZoomOut} title="Alejar (Zoom -)" aria-label="Alejar (zoom out)">－</button>
      <span className="zoom-label">{Math.round(zoom*100)}%</span>
-     <button onClick={handleZoomIn} title="Acercar (Zoom +)">＋</button>
-     <button onClick={handleResetZoom} title="Restablecer zoom a 100%">↺ 100%</button>
-     <button onClick={handleFit} title="Ajustar a pantalla (ver toda la composición)">⛶ Ajustar</button>
-     <button onClick={handleCenter} title="Centrar composición">⛶ Centrar</button>
+     <button onClick={handleZoomIn} title="Acercar (Zoom +)" aria-label="Acercar (zoom in)">＋</button>
+     <button onClick={handleResetZoom} title="Restablecer zoom a 100%" aria-label="Restablecer el zoom al 100%">↺ 100%</button>
+     <button onClick={handleFit} title="Ajustar a pantalla (ver toda la composición)" aria-label="Ajustar a pantalla para ver toda la composición">⛶ Ajustar</button>
+     <button onClick={handleCenter} title="Centrar composición" aria-label="Centrar la composición">⛶ Centrar</button>
     </div>
     <button className="export" onClick={exportPNG} disabled={!elements.length}>Exportar PNG</button>
    </div>
@@ -429,12 +536,12 @@ export default function CanvasEditor(){
   onTouchStart={onStageTouchStart}
   onTouchMove={onStageTouchMove}
   onTouchEnd={onStageTouchEnd}
-  onTouchCancel={onStageTouchEnd}>
+  onTouchCancel={onStageTouchCancel}>
     <Layer ref={layerRef}>
      {elements.filter(e=>e.type==='marimba').map(e=>(
-      <MarimbaNode key={e.id} m={e as MarimbaElement} selected={selectedId===e.id}/>))}
+      <MarimbaNode key={e.id} m={e as MarimbaElement} selected={selectedId===e.id} spacePressed={spacePressed}/>))}
      {elements.filter(e=>e.type==='person').map(e=>(
-      <PersonNode key={e.id} e={e as PersonElement} selected={selectedId===e.id}/>))}
+      <PersonNode key={e.id} e={e as PersonElement} selected={selectedId===e.id} spacePressed={spacePressed}/>))}
      <Transformer ref={trRef}
       rotateEnabled={!isLocked}
       keepRatio={false}

@@ -1,12 +1,15 @@
 import {useState} from 'react';
 import {api} from '../lib/api';
 import {useComposition, elementLocked} from '../store/composition';
+import {useConfirm} from '../hooks/useConfirm';
 import type {MarimbaElement,PersonElement} from '../types';
 
 export const DRAG_PERSON_MIME='application/x-marimba-person';
 
 export default function PersonPanel({projectId,onDeleted}:{projectId?:number;onDeleted?:(personId:number)=>void}){
  const elements=useComposition(s=>s.elements);
+ // 7L: confirmación accesible.
+ const confirmar=useConfirm();
  const selectedId=useComposition(s=>s.selectedId);
  const selectedSlot=useComposition(s=>s.selectedSlot);
  const focus=useComposition(s=>s.focus);
@@ -51,15 +54,16 @@ export default function PersonPanel({projectId,onDeleted}:{projectId?:number;onD
  };
  // COMPOSITION-ONLY: drops the visual representation, one undo step, NO api call, so
  // neither the catalog nor any historical assignment is touched.
- const removeFromCompositionOnly=(x:{p:PersonElement;where:string|null})=>{
+ const removeFromCompositionOnly=async(x:{p:PersonElement;where:string|null})=>{
   if(elementLocked(elements,x.p.id)){
    alert('El elemento está bloqueado. Desbloquéalo para quitarlo.');
    return;
   }
-  const msg=x.where
+  const quitarTitulo=`Quitar a ${x.p.name} de esta composicion`;
+   const msg=x.where
    ?`${x.p.name} está asignada a ${x.where}.\n\n¿Quitarla de esta composición? El puesto quedará libre.\n\nLa persona seguirá en el catálogo y en el historial de las canciones.`
    :`¿Quitar a ${x.p.name} de esta composición?\n\nLa persona seguirá en el catálogo y en el historial de las canciones.`;
-  if(!window.confirm(msg))return;
+  if(!await confirmar.show({title:quitarTitulo,message:msg}))return;
   removeFromComposition(x.p.id);
  };
  // GLOBAL: removes the visual representation AND the SongAssignment rows of THIS
@@ -78,7 +82,11 @@ export default function PersonPanel({projectId,onDeleted}:{projectId?:number;onD
    +`· Se quitará de las composiciones guardadas de este proyecto.\n`
    +`· La persona seguirá existiendo en el catálogo global.\n\n`
    +`Esta operación no se puede deshacer con Ctrl+Z. ¿Continuar?`;
-  if(!window.confirm(msg))return;
+  if(!await confirmar.show({
+    title:`Quitar a ${x.p.name} de este proyecto`,
+    message:msg,
+    destructive:true,
+   }))return;
   try{
    await api.removePersonFromProject(x.p.personId,projectId,'project');
    removePersonFromProject(x.p.id);
@@ -112,11 +120,23 @@ export default function PersonPanel({projectId,onDeleted}:{projectId?:number;onD
      <b>{x.p.locked?'🔒 ':''}{x.p.name}</b>
      <small>{x.where?x.where:`Libre · ${x.p.positionType}`}</small>
     </button>
-    <button className="pp-act" title={slotLabel?`${x.where?'Reemplazar en':'Asignar a'} ${slotLabel}`:'Selecciona primero un puesto en la marimba'}
+    {/* 7X: botones de icono. El `title` NO basta: con contenido, el contenido gana
+         al `title` en el nombre accesible. Se nombra cada accion. */}
+    <button className="pp-act"
+     aria-label={locked?`${x.p.name} está bloqueada`
+      :slotLabel?`${x.where?'Reemplazar en':'Asignar a'} ${slotLabel}`
+      :'Asignar a un puesto: selecciona primero un puesto en la marimba'}
+     title={slotLabel?`${x.where?'Reemplazar en':'Asignar a'} ${slotLabel}`:'Selecciona primero un puesto en la marimba'}
      disabled={locked} onClick={()=>assignToSelectedSlot(x)}>◎</button>
-    <button className="pp-del" disabled={locked} title={locked?'Bloqueada: desbloquéala para quitarla':`Quitar a ${x.p.name} de esta composición`}
+    <button className="pp-del" disabled={locked}
+     aria-label={locked?`${x.p.name} está bloqueada`
+      :`Quitar a ${x.p.name} de esta composición`}
+     title={locked?'Bloqueada: desbloquéala para quitarla':`Quitar a ${x.p.name} de esta composición`}
      onClick={()=>removeFromCompositionOnly(x)}>🗑</button>
-    <button className="pp-del proj" disabled={locked} title={locked?'Bloqueada: desbloquéala para quitarla':`Quitar a ${x.p.name} del proyecto (elimina sus asignaciones en este proyecto)`}
+    <button className="pp-del proj" disabled={locked}
+     aria-label={locked?`${x.p.name} está bloqueada`
+      :`Quitar a ${x.p.name} del proyecto y eliminar sus asignaciones en este proyecto`}
+     title={locked?'Bloqueada: desbloquéala para quitarla':`Quitar a ${x.p.name} del proyecto (elimina sus asignaciones en este proyecto)`}
      onClick={()=>removeFromProject(x)}>⛔</button>
    </div>
   );
@@ -146,12 +166,12 @@ export default function PersonPanel({projectId,onDeleted}:{projectId?:number;onD
    {persons.length===0&&<p className="hint">Aún no hay personas en el lienzo. Usa «＋ Persona» o personas de la pieza.</p>}
    {persons.length>0&&filtered.length===0&&<p className="hint">Sin coincidencias.</p>}
    <div className="pp-group">
-    <h4>Sin asignar ({free.length})</h4>
+    <h3>Sin asignar ({free.length})</h3>
     {persons.length>0&&free.length===0&&<p className="hint">Todas asignadas.</p>}
     {free.map(item)}
    </div>
    <div className="pp-group">
-    <h4>Asignadas ({placed.length})</h4>
+    <h3>Asignadas ({placed.length})</h3>
     {persons.length>0&&placed.length===0&&<p className="hint">Ninguna asignada aún.</p>}
     {placed.map(item)}
    </div>

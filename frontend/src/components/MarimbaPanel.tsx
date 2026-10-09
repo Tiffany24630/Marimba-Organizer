@@ -14,7 +14,7 @@ export default function MarimbaPanel({onAddTemplate}:{onAddTemplate:(name:string
  return (
   <div className="marimba-panel">
    <div className="pp-group">
-    <h4>En el lienzo ({marimbas.length})</h4>
+    <h3>En el lienzo ({marimbas.length})</h3>
     {marimbas.length===0&&<p className="hint">Sin marimbas. Agrega una desde las plantillas de abajo.</p>}
     {marimbas.map(m=>{
      const occ=m.positions.filter(p=>p.personId!=null).length;
@@ -25,7 +25,9 @@ export default function MarimbaPanel({onAddTemplate}:{onAddTemplate:(name:string
         <b>{m.locked?'\u{1F512} ':''}{m.name}</b>
         <small>{m.positions.length} puestos · {occ} ocupados</small>
        </button>
-       <button className="pp-act lock" title={m.locked?`${m.name} está bloqueada: clic para desbloquear`:`Bloquear ${m.name} (impide moverla, editar sus puestos y asignar)`}
+       <button className="pp-act lock"
+        aria-label={m.locked?`Desbloquear ${m.name}`:`Bloquear ${m.name}`}
+        title={m.locked?`${m.name} está bloqueada: clic para desbloquear`:`Bloquear ${m.name} (impide moverla, editar sus puestos y asignar)`}
         onClick={()=>toggleLock(m.id)}>{m.locked?'\u{1F512}':'\u{1F513}'}</button>
       </div>
      );
@@ -62,7 +64,7 @@ export default function MarimbaPanel({onAddTemplate}:{onAddTemplate:(name:string
     {marimbas.length>0&&<p className="hint">Toca un puesto para seleccionarlo y ver sus propiedades en el inspector. 🔓/🔒 bloquea la marimba completa.</p>}
    </div>
    <div className="pp-group">
-    <h4>Plantillas</h4>
+    <h3>Plantillas</h3>
     <TemplatePicker onAdd={onAddTemplate}/>
    </div>
   </div>
