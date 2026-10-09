@@ -9,6 +9,7 @@ from app.services.suggestions.history import get_person_history
 from app.services.suggestions.requirements import get_song_requirements, get_song_assignments
 from app.services.suggestions.distributor import generate_proposals, create_composition_from_proposals
 from app.services.suggestions.movement import analyze_changes
+from conftest import proyecto_de_prueba
 
 client = TestClient(app)
 
@@ -42,7 +43,7 @@ def _setup():
     lu = _get_or_create_person(db, "Luis")
     pp = _get_or_create_position(db, "Primera")
     ps = _get_or_create_position(db, "Segunda")
-    project = Project(name="Concierto E2E")
+    project = proyecto_de_prueba(db, "Concierto E2E")
 
     db.add(project)
     db.commit()

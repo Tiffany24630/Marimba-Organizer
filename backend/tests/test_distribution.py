@@ -9,6 +9,7 @@ from app.services.suggestions.distribution import propose_distribution, get_dist
 from app.services.suggestions.engine_a import slots_from_composition, get_previous_assignment_map
 from app.services.suggestions.engine_b import _pick, _free_of, _same_marimba
 from app.services.suggestions.history import get_person_history
+from conftest import proyecto_de_prueba
 from app.db.session import SessionLocal
 from app.models import Project, Person, Position, Song, SongAssignment, Composition
 
@@ -150,7 +151,7 @@ def test_d12_composicion_anterior_intacta():
     db = SessionLocal()
 
     try:
-        proj = Project(name='Dist intacta')
+        proj = proyecto_de_prueba(db, 'Dist intacta')
 
         db.add(proj)
         db.commit()
@@ -208,7 +209,7 @@ def test_d13_aplicacion_propuesta():
     db = SessionLocal()
 
     try:
-        proj = Project(name='Dist apply')
+        proj = proyecto_de_prueba(db, 'Dist apply')
 
         db.add(proj)
         db.commit()
@@ -358,7 +359,7 @@ def _proyecto_con_canciones(nombre, n):
     """Proyecto con `n` canciones ordenadas, con su propia sesion de BD."""
     db = SessionLocal()
     carlos, primera = _persona_y_posicion(db, nombre + ' Carlos', 'Primera')
-    proj = Project(name=nombre); db.add(proj); db.commit(); db.refresh(proj)
+    proj = proyecto_de_prueba(db, nombre)
     songs = []
     for i in range(n):
         s = Song(project_id=proj.id, name='%s S%d' % (nombre, i), order_index=i)
