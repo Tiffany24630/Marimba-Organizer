@@ -22,6 +22,22 @@ dist/
 frontend/test-results/
 playwright-report/
 
+# --- Evidencia y salidas regenerables de pruebas locales ---
+*.log
+/*.txt
+/_r*.json
+check_proc.py
+frontend/e2e/.descargas/
+frontend/e2e/.*.json
+frontend/e2e/.diagnostico.txt
+frontend/e2e/diagnostico.chromium.cjs
+frontend/e2e_*.log
+backend/.pytest-tmp-*/
+backend/out_*.txt
+backend/pytest*.log
+pruebas/
+run9j_e2e.cjs
+
 # --- Editores / SO ---
 .vscode/
 .idea/
