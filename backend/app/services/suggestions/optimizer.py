@@ -41,6 +41,7 @@ por el orden de inserccion de los diccionarios.
 from collections import deque
 
 from app.services.suggestions.engine_b import _same_marimba
+from app.services.suggestions.positions import same_position
 
 # --- Pesos de las preferencias (ajustables sin tocar las restricciones) -----
 COSTOS = {
@@ -270,7 +271,11 @@ def optimize_proposals(requirements, available_people, slots, prev_map,
         work.append(q)
 
     def cost_fn(p, s):
-        if s['position_type'] != p.get('_wanted_type'):
+        # D5-compat: la comparacion usa el canonico del puesto, no igualdad
+        # exacta. Sin esto, un puesto fisico llamado "Primeras" (plural) no
+        # casaba con una persona que pide "Primera" (singular) y la arista no
+        # se creaba, pese a ser el mismo puesto musical.
+        if not same_position(s['position_type'], p.get('_wanted_type')):
             return None
         pv = prev_map.get(p['person_id'], {})
         hist = history_by_person.get(p['person_id'])
