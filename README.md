@@ -64,6 +64,107 @@ docker compose up --build
 - Backend: `http://localhost:8000`
 - Swagger: `http://localhost:8000/docs`
 
+## API y enlaces publicos
+
+La API vive bajo el prefijo `/api`. Las rutas privadas requieren una sesion
+valida en cookie; las operaciones de escritura tambien requieren la proteccion
+anti-CSRF que usa el frontend. La unica lectura anonima relacionada con
+enlaces es la consulta por token.
+
+### Superficie de enlaces publicos
+
+| Metodo y ruta | Acceso | Resultado principal |
+| --- | --- | --- |
+| `POST /api/compositions/{cid}/public-link` | Propietario autenticado + CSRF | Crea o reactiva un enlace y devuelve el token en claro una sola vez. |
+| `GET /api/compositions/{cid}/public-link` | Propietario autenticado | Devuelve el estado administrativo; nunca devuelve el token. |
+| `DELETE /api/compositions/{cid}/public-link` | Propietario autenticado + CSRF | Revoca el enlace sin borrar la composicion ni su historial. |
+| `GET /api/public-links` | Usuario autenticado; solo sus proyectos | Lista los enlaces del propietario, sin tokens ni ids internos. |
+| `GET /api/public/compositions/{token}` | Publico, sin sesion | Devuelve una composicion persistida en modo lectura. |
+
+Crear un enlace acepta opcionalmente un cuerpo JSON con `expires_at` en formato
+ISO-8601. La fecha debe estar en el futuro; omitirla, enviar `null` o enviar un
+cuerpo vacio crea un enlace sin caducidad. Si ya existe un enlace, la operacion
+lo reactiva con un token nuevo, por lo que el token anterior deja de funcionar.
+
+La respuesta de creacion contiene `active`, `token`, `created_at` y
+`expires_at`. La lectura de estado contiene `active`, `expired`, `created_at`,
+`revoked_at` y `expires_at`. Una fecha invalida o no futura responde `422`;
+una sesion ausente o invalida responde `401`; el acceso a una composicion que
+no pertenece al propietario responde `404`; una escritura autenticada sin la
+cabecera CSRF valida responde `403`. Las operaciones exitosas responden `200`.
+
+El listado agregado responde una lista de objetos con estos campos:
+`project_name`, `composition_name`, `created_at`, `expires_at`, `revoked_at` y
+`status`. `status` solo puede ser `active`, `expired` o `revoked`; si un enlace
+esta revocado y caducado, prevalece `revoked`. El listado no permite abrir,
+copiar ni revocar enlaces: el token en claro solo se conoce al crearlo.
+
+La lectura publica devuelve `name`, `width`, `height`, `data`, `song_name` y
+`project_name`. No requiere sesion y es estrictamente de lectura: no permite
+editar, enumerar enlaces ni consultar el historial de versiones. Un token
+inexistente, revocado, caducado o asociado a una composicion borrada responde
+`404` con el mismo mensaje generico. Esta uniformidad evita revelar el estado
+del enlace. Una lectura valida responde `200`.
+
+El endpoint publico por token esta protegido por rate-limit antes de buscar el
+token. La politica por defecto es una ventana deslizante por IP de conexion de
+`60` solicitudes cada `60` segundos. Se configura con
+`PUBLIC_LINK_RATE_LIMIT` y `PUBLIC_LINK_RATE_WINDOW_S`; no se documentan aqui
+valores temporales de entornos de prueba. Al superar el limite responde `429`
+con la cabecera `Retry-After`. El listado autenticado y las operaciones del
+propietario no usan este limite.
+
+### Desarrollo y E2E
+
+Desarrollo sin Docker:
+
+```bash
+cd backend
+python -m venv .venv
+.venv\\Scripts\\Activate.ps1
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
+
+En otra terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Para el entorno Docker de desarrollo, desde la raiz:
+
+```bash
+docker compose up --build
+```
+
+Para el entorno E2E aislado ya definido por el proyecto:
+
+```bash
+docker compose -p marimba7f \\
+  -f docker-compose.yml -f docker-compose.7f.yml -f docker-compose.e2e.yml \\
+  up -d --build
+```
+
+Ese entorno publica el frontend en `http://localhost:18080`, el backend en
+`http://localhost:18000` y Mailpit en `http://localhost:18025`. PostgreSQL usa
+el volumen declarado por Compose. No se debe usar `docker compose down -v` en
+este flujo.
+
+### Limites conocidos de la API
+
+- Los enlaces publicos no son sesiones autenticadas ni conceden permisos de
+  escritura.
+- El token no se puede recuperar desde el listado ni desde el estado del
+  enlace; si se pierde, hay que crear/reactivar el enlace para obtener uno
+  nuevo.
+- El listado agregado no tiene paginacion, filtros ni busqueda.
+- `POST /api/suggestions` permanece como adaptador legacy autenticado, y
+  `GET /api/songs/{song_id}` permanece como recurso interno autenticado. Ambos
+  estan registrados y cubiertos por pruebas; no se eliminan en esta fase.
+
 ## Flujo probado conceptualmente
 
 1. Importar `examples/Puestos conciertos Marimba.xlsx`.
