@@ -297,8 +297,10 @@ def people(db:Session=Depends(get_db),user:User=Depends(require_user)):
     # Los de sus proyectos mas el catalogo global (project_id NULL), que por
     # diseno del proyecto es compartido. Antes devolvia TODOS los usuarios.
     mios=db.scalars(select(Person).join(Project,Person.project_id==Project.id)
-                    .where(Project.owner_id==user.id).order_by(Person.name)).all()
-    globales=db.scalars(select(Person).where(Person.project_id.is_(None))
+                    .where(Project.owner_id==user.id,Person.active.is_(True))
+                    .order_by(Person.name)).all()
+    globales=db.scalars(select(Person).where(Person.project_id.is_(None),
+                                             Person.active.is_(True))
                         .order_by(Person.name)).all()
     vistos={}
     for p in mios+globales:
@@ -338,6 +340,18 @@ def create_person(p:PersonIn,db:Session=Depends(get_db),user:User=Depends(check_
     # se indica proyecto, la persona va al catalogo global compartido.
     if p.project_id is not None:
         owned_project(p.project_id,user,db)
+        # Una persona creada especificamente para este proyecto se conserva
+        # como fila inactiva al retirarla con scope=project. Reactivarla es la
+        # operacion inversa de esa retirada: no crea un id duplicado ni obliga
+        # al usuario a renombrarla para poder volver a trabajar con ella.
+        inactiva=db.scalar(select(Person).where(
+            Person.name==name, Person.project_id==p.project_id,
+            Person.active.is_(False)))
+        if inactiva and not _person_has_project_references(db,inactiva.id,p.project_id):
+            inactiva.active=True
+            db.commit()
+            db.refresh(inactiva)
+            return obj(inactiva)
     # UX-4: la validacion de duplicado se hace SOLO dentro del proyecto actual.
     # Antes bloqueaba a quien ya existiria en otro proyecto, sin poder agregarlo.
     # Sin `project_id` no hay ambito de proyecto, asi que se exige unicidad global.
@@ -388,6 +402,19 @@ def _composition_references_person(data,pid):
         for slot in element.get('positions',[]) or []:
             if isinstance(slot,dict) and str(slot.get('personId'))==str(pid):
                 return True
+    return False
+
+def _person_has_project_references(db:Session,pid:int,project_id:int):
+    """Indica si una persona aun tiene datos vivos dentro del proyecto."""
+    song_ids=select(Song.id).where(Song.project_id==project_id)
+    if db.scalar(select(SongAssignment.id).where(
+        SongAssignment.person_id==pid,
+        SongAssignment.song_id.in_(song_ids)).limit(1)) is not None:
+        return True
+    for composition in db.scalars(select(Composition).where(
+            Composition.project_id==project_id)).all():
+        if _composition_references_person(composition.data,pid):
+            return True
     return False
 
 def _strip_person_from_composition(data,pid):
@@ -476,6 +503,11 @@ def delete_person(pid:int,project_id:int|None=None,scope:str='composition',
             assignments_removed=len(assignments)
             for a in assignments:
                 db.delete(a)
+        # Las filas creadas dentro del proyecto no se destruyen: se desactivan
+        # para que el mismo nombre/id pueda reactivarse en un alta posterior.
+        # Una persona global puede seguir siendo usada por otros proyectos.
+        if x.project_id==project_id:
+            x.active=False
 
     compositions_updated=0
     freed_slots=0
