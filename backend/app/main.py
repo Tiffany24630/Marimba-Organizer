@@ -54,7 +54,11 @@ def wait_for_db(retries:int=30,delay:float=2.0)->None:
             time.sleep(delay)
 
 wait_for_db()
-if not settings.schema_managed_externally:
+# La compatibilidad DDL historica solo existe para desarrollo y pruebas. En
+# produccion `validar_configuracion_produccion()` exige el modo externo antes
+# de llegar aqui.
+if not settings.schema_managed_externally and \
+        settings.app_env.strip().lower() in ('development', 'test'):
     Base.metadata.create_all(bind=engine)
 
 
@@ -331,6 +335,20 @@ app.include_router(collab_router,prefix='/api')
 app.include_router(public_router,prefix='/api')
 
 
+@app.middleware('http')
+async def security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    response.headers.setdefault('X-Frame-Options', 'DENY')
+    response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+    if (settings.app_env.strip().lower() == 'production' and
+            settings.public_base_url.startswith('https://')):
+        response.headers.setdefault(
+            'Strict-Transport-Security', 'max-age=31536000')
+    return response
+
+
 @app.get('/')
 
 def root(): return {
@@ -340,5 +358,6 @@ def root(): return {
 # Las instalaciones locales mantienen las migraciones históricas idempotentes.
 # En producción, `SCHEMA_MANAGED_EXTERNALLY=true` exige que Alembic haya
 # preparado el esquema antes de arrancar y evita cambios de DDL en startup.
-if not settings.schema_managed_externally:
+if not settings.schema_managed_externally and \
+        settings.app_env.strip().lower() in ('development', 'test'):
     _apply_schema_updates()

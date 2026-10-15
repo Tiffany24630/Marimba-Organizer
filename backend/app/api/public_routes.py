@@ -37,8 +37,17 @@ router=APIRouter()
 # Fase 9J: la politica se lee del entorno UNA vez al importar el modulo
 # (`PUBLIC_LINK_RATE_LIMIT` / `PUBLIC_LINK_RATE_WINDOW_S`, con defecto
 # 60 req / 60 s). Los tests la reconfiguran con `rate_limit.configurar()`.
-rate_limit.configurar(settings.public_link_rate_limit,
-                       float(settings.public_link_rate_window_s))
+if settings.rate_limit_store.strip().lower() in ('redis', 'distributed'):
+    if not settings.redis_url:
+        raise RuntimeError('REDIS_URL es obligatorio para rate limiting distribuido')
+    _rate_store = rate_limit.RedisRateLimitStore.from_url(settings.redis_url)
+    rate_limit.configurar(settings.public_link_rate_limit,
+                           float(settings.public_link_rate_window_s),
+                           _rate_store)
+else:
+    rate_limit.configurar(settings.public_link_rate_limit,
+                           float(settings.public_link_rate_window_s),
+                           rate_limit.InMemoryRateLimitStore())
 
 
 def _aware(dt):
@@ -257,7 +266,11 @@ def ver_publico(token:str,request:Request,db:Session=Depends(get_db)):
     # y las operaciones del propietario quedan fuera (9J §5).
     ip=(request.client.host if request.client and request.client.host
         else 'desconocida')
-    permitido,reintento=rate_limit.comprobar(ip)
+    try:
+        permitido,reintento=rate_limit.comprobar(ip)
+    except rate_limit.RateLimitUnavailable:
+        raise HTTPException(503, 'Servicio no disponible.',
+                            headers={'Retry-After': '5'})
     if not permitido:
         raise HTTPException(429,'Demasiadas solicitudes. Inténtalo de nuevo '
                                 'en unos momentos.',

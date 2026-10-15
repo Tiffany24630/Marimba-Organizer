@@ -1,9 +1,10 @@
 import unicodedata,re
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
-from app.db.session import get_db
+from app.db.session import get_db, engine
 from app.models import (Project,Person,Position,Song,SongAssignment,MarimbaTemplate,
                         Composition,CompositionVersion)
 from app.api.deps import (User, require_user, check_csrf, check_admin, owned_project,
@@ -32,6 +33,16 @@ def obj(x):
 @router.get('/health')
 def health(): 
     return {'status':'ok'}
+
+@router.get('/ready')
+def ready():
+    """Readiness barata: distingue proceso vivo de base disponible."""
+    try:
+        with engine.connect() as conn:
+            conn.execute(select(1))
+    except SQLAlchemyError:
+        raise HTTPException(503, 'Servicio no disponible.')
+    return {'status':'ready'}
 
 @router.post('/imports/preview')
 async def preview(file:UploadFile=File(...), db:Session=Depends(get_db)):

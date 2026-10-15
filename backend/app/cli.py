@@ -28,6 +28,7 @@ Uso:
 """
 import argparse
 import getpass
+import json
 import sys
 
 from app.api.deps import normalize_email
@@ -125,6 +126,9 @@ def main(argv=None) -> int:
     ca.add_argument('--promover', action='store_true',
                     help='Convierte en admin una cuenta existente. Sin esta '
                          'bandera NO se toca una cuenta que ya existe.')
+    sub.add_parser(
+        'schema-audit',
+        help='Inspecciona el esquema sin modificar la base ni alembic_version.')
     args = p.parse_args(argv)
 
     if args.comando == 'create-admin':
@@ -134,6 +138,12 @@ def main(argv=None) -> int:
         # El mensaje jamas contiene la contrasena: `crear_admin` lo garantiza.
         print(mensaje)
         return codigo
+    if args.comando == 'schema-audit':
+        from app.schema_audit import inspect_schema
+        resultado = inspect_schema()
+        print(json.dumps(resultado, ensure_ascii=False, sort_keys=True))
+        return {'compatible': 0, 'incompatible': 2, 'unknown': 3}[
+            resultado['status']]
     return FALLO  # pragma: no cover
 
 

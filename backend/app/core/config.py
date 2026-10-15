@@ -1,4 +1,5 @@
 from datetime import timedelta
+from urllib.parse import urlparse
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from dotenv import load_dotenv
 
@@ -6,6 +7,7 @@ load_dotenv(dotenv_path=".env")
 env = load_dotenv(dotenv_path=".env", override=True)
 
 class Settings(BaseSettings):
+    app_env: str = "development"
     database_url: str = "sqlite:///./marimba.db"
     cors_origins: str = "http://localhost:5173,http://localhost:4173"
     # En producción el esquema debe prepararse con `alembic upgrade head`.
@@ -45,6 +47,8 @@ class Settings(BaseSettings):
     # (autenticado) ni sobre operaciones del propietario.
     public_link_rate_limit: int = 60
     public_link_rate_window_s: int = 60
+    rate_limit_store: str = "memory"
+    redis_url: str | None = None
 
     # --- Fase 7C: usuario tecnico de migracion ---
     # Correo del usuario NORMAL que hereda los proyectos historicos. La
@@ -65,10 +69,59 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
+
+def _es_host_de_desarrollo(url: str) -> bool:
+    host = (urlparse(url).hostname or '').lower()
+    return host in {'localhost', '127.0.0.1', '::1'} or \
+        host.endswith('.local')
+
+
+def validar_configuracion_produccion() -> None:
+    """Rechaza defaults locales cuando el proceso se declara productivo."""
+    if settings.app_env.strip().lower() != 'production':
+        return
+
+    errores = []
+    db_url = settings.database_url.strip().lower()
+    if not db_url.startswith(('postgresql://', 'postgresql+psycopg://')):
+        errores.append('DATABASE_URL debe apuntar a PostgreSQL')
+    if not settings.schema_managed_externally:
+        errores.append('SCHEMA_MANAGED_EXTERNALLY=true es obligatorio')
+
+    base = settings.public_base_url.strip()
+    parsed_base = urlparse(base)
+    if parsed_base.scheme != 'https' or _es_host_de_desarrollo(base):
+        errores.append('PUBLIC_BASE_URL debe ser HTTPS y no usar un host local')
+
+    origins = [o.strip() for o in settings.cors_origins.split(',') if o.strip()]
+    if not origins or any(_es_host_de_desarrollo(o) or
+                          urlparse(o).scheme not in ('http', 'https')
+                          for o in origins):
+        errores.append('CORS_ORIGINS debe contener solo orígenes externos válidos')
+
+    if (settings.mail_provider or '').lower() != 'smtp':
+        errores.append('MAIL_PROVIDER=smtp es obligatorio')
+    if not settings.smtp_host or not settings.smtp_user or \
+            not settings.smtp_password or not settings.mail_from:
+        errores.append('la configuración SMTP productiva está incompleta')
+    if settings.smtp_port <= 0:
+        errores.append('SMTP_PORT debe ser positivo')
+    if not settings.secure_cookies:
+        errores.append('SECURE_COOKIES=true es obligatorio con HTTPS')
+    if settings.rate_limit_store.strip().lower() not in ('redis', 'distributed'):
+        errores.append('RATE_LIMIT_STORE=redis es obligatorio en produccion')
+    elif not settings.redis_url:
+        errores.append('REDIS_URL es obligatorio con RATE_LIMIT_STORE=redis')
+
+    if errores:
+        raise RuntimeError('Configuración de producción inválida: ' + '; '.join(errores))
+
 # Si no se indica explicitamente, la cookie va en modo seguro cuando el sitio
 # publico es https. Evita que un despliegue https sirva cookies por http.
 if settings.secure_cookies is None:
     settings.secure_cookies = settings.public_base_url.startswith("https://")
+
+validar_configuracion_produccion()
 
 # --- Fase 7G: coherencia de la configuracion de despliegue -----------------
 # public_base_url decide dos cosas: si la cookie lleva Secure y como se
