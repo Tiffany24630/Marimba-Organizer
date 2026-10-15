@@ -1,0 +1,25 @@
+# FASE 12A-R1: entorno E2E dedicado. Se usa además de los tres Compose base.
+# No reutiliza puertos ni el volumen del proyecto marimba7f.
+services:
+  mailpit:
+    ports: !override ["28025:8025", "21025:1025"]
+  backend:
+    ports: !override ["28000:8000"]
+    environment:
+      CORS_ORIGINS: http://localhost:28080
+      PUBLIC_BASE_URL: http://localhost:28080
+      MAIL_PROVIDER: smtp
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_USE_TLS: "false"
+      SMTP_USER: ""
+      SMTP_PASSWORD: ""
+      MAIL_FROM: no-reply@marimba.local
+      PUBLIC_LINK_RATE_LIMIT: "10"
+      PUBLIC_LINK_RATE_WINDOW_S: "60"
+  frontend:
+    ports: !override ["28080:80"]
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:28000/api
