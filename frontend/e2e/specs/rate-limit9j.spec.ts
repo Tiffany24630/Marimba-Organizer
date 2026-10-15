@@ -9,7 +9,7 @@
  */
 import {test,expect,type Page} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import {entrar,escribir,unico,WEB,CORREOS,aislarRateLimitE2E} from './helpers';
+import {entrar,escribir,unico,WEB,API,CORREOS,aislarRateLimitE2E} from './helpers';
 
 aislarRateLimitE2E();
 
@@ -47,7 +47,7 @@ async function getCrudo(page:Page,token:string){
     const r=await fetch(`${d.api}/public/compositions/${d.token}`);
     return {status:r.status,retry:r.headers.get('retry-after'),
             cuerpo:await r.text()};
-  },{api:'http://localhost:18000/api',token});
+  },{api:API,token});
 }
 
 test.describe('Rate-limit del acceso publico (9J)',()=>{

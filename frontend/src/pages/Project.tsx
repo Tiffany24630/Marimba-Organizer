@@ -644,6 +644,7 @@ useEffect(()=>{saveRef.current=save;});
        {(['personas','marimbas','paneles'] as const).map(t=>(
         <button key={t} role="tab" aria-selected={sideTab===t}
          className={`side-tab ${sideTab===t?'active':''}`}
+         onKeyDown={e=>{if(e.key===' '){e.preventDefault();e.stopPropagation();setSideTab(t);}}}
          onClick={()=>setSideTab(t)}>{t==='personas'?'Personas':t==='marimbas'?'Marimbas':'Paneles'}</button>
        ))}
       </div>

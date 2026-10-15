@@ -11,6 +11,7 @@ import {resolve} from 'node:path';
 export const WEB = process.env.E2E_WEB || 'http://localhost:18080';
 export const API = process.env.E2E_API || 'http://localhost:18000/api';
 export const MAILPIT = process.env.E2E_MAILPIT || 'http://localhost:18025';
+export const E2E_COMPOSE_PROJECT = process.env.E2E_COMPOSE_PROJECT || 'marimba7f';
 
 /** Clave de las cuentas de pruebas. No es un secreto ni se usa fuera de 7F. */
 export const CLAVE = process.env.E2E_CLAVE || 'Prueba7F-No-Usar-Fuera';
@@ -35,7 +36,7 @@ export function aislarRateLimitE2E() {
     const cwd = process.cwd();
     const root = cwd.endsWith('frontend') ? resolve(cwd, '..') : cwd;
     execFileSync('docker', [
-      'compose', '-p', 'marimba7f',
+      'compose', '-p', E2E_COMPOSE_PROJECT,
       '-f', 'docker-compose.yml',
       '-f', 'docker-compose.7f.yml',
       '-f', 'docker-compose.e2e.yml',

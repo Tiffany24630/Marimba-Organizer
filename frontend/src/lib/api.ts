@@ -1,4 +1,8 @@
-const API=import.meta.env.VITE_API_URL||'http://localhost:8000/api';
+// Produccion same-site usa el proxy del origen publico. El fallback local
+// solo existe en desarrollo para no enviar accidentalmente un bundle servido
+// en produccion al localhost del navegador.
+const API=import.meta.env.VITE_API_URL||
+ (import.meta.env.MODE==='production'?'/api':'http://localhost:8000/api');
 
 // Fase 7C: la sesion viaja en una cookie HttpOnly, asi que el navegador debe
 // enviarla (`credentials:'include'`) y las peticiones que cambian estado deben
