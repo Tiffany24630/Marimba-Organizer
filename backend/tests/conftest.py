@@ -1,10 +1,17 @@
 import os
 import sys
+import atexit
+import shutil
+import tempfile
 from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND))
-os.environ['DATABASE_URL'] = 'sqlite:///./test_marimba.db'
+# Cada ejecucion recibe una SQLite nueva dentro de un directorio creado por
+# esta suite. No se reutiliza ninguna base del proyecto ni depende del cwd.
+_TEST_ROOT = Path(tempfile.mkdtemp(prefix='.pytest-run-', dir=BACKEND))
+atexit.register(shutil.rmtree, _TEST_ROOT, ignore_errors=True)
+os.environ['DATABASE_URL'] = 'sqlite:///' + str(_TEST_ROOT / 'database.db')
 # Fase 7C: durante las pruebas el correo NUNCA sale de verdad. El proveedor
 # `console` es el modo de desarrollo declarado: deja el enlace en el log del
 # servidor y devuelve delivered=False. Ninguna prueba afirma que se haya
@@ -16,8 +23,12 @@ os.environ['MAIL_PROVIDER'] = 'console'
 os.environ['PBKDF2_ITERATIONS'] = '2000'
 
 _db = BACKEND / 'test_marimba.db'
-if _db.exists():
-    _db.unlink()
+# No se toca backend/test_marimba.db: las pruebas ya no la utilizan.
+
+
+def pytest_configure(config):
+    """Aloja tmp_path en el directorio aislado creado por esta ejecucion."""
+    config.option.basetemp = str(_TEST_ROOT / 'pytest-tmp')
 
 # --- Fase 7C: fixtures de autenticacion ---------------------------------
 # Las pruebas existentes siguen comprobando lo que siempre comprobaron, pero

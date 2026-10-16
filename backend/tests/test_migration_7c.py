@@ -203,6 +203,7 @@ import os, sys
 sys.path.insert(0, {str(BACKEND)!r})
 os.environ['DATABASE_URL'] = 'sqlite:///' + {str(dbf)!r}
 os.environ['PBKDF2_ITERATIONS'] = '2000'
+os.environ['SCHEMA_MANAGED_EXTERNALLY'] = 'true'
 import app.db.session as dbs
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -233,6 +234,7 @@ import os, sys
 sys.path.insert(0, {str(BACKEND)!r})
 os.environ['DATABASE_URL'] = 'sqlite:///' + {str(dbf)!r}
 os.environ['PBKDF2_ITERATIONS'] = '2000'
+os.environ['SCHEMA_MANAGED_EXTERNALLY'] = 'true'
 import app.db.session as dbs
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker

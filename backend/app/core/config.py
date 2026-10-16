@@ -3,8 +3,10 @@ from urllib.parse import urlparse
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from dotenv import load_dotenv
 
-load_dotenv(dotenv_path=".env")
-env = load_dotenv(dotenv_path=".env", override=True)
+# El entorno del proceso tiene prioridad sobre el fichero local. Esto permite
+# que pytest y los proveedores inyecten DATABASE_URL y otros valores sin que
+# un `.env` del directorio de trabajo los sustituya silenciosamente.
+load_dotenv(dotenv_path=".env", override=False)
 
 class Settings(BaseSettings):
     app_env: str = "development"
