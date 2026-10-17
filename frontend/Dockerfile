@@ -9,6 +9,8 @@ COPY . .
 # Es un valor de compilacion, no de ejecucion.
 ARG VITE_API_URL=http://localhost:8000/api
 ENV VITE_API_URL=$VITE_API_URL
+ARG VITE_DEPLOY_ENV=development
+ENV VITE_DEPLOY_ENV=$VITE_DEPLOY_ENV
 RUN npm run build
 FROM nginx:alpine
 # 9E: SPA fallback. Sin `try_files`, `/public/compositions/<token>` daria 404
