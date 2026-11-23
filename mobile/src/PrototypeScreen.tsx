@@ -7,6 +7,7 @@ import {
   Text,
   useWindowDimensions,
   View,
+  Linking,
 } from 'react-native';
 import { ImageFormat } from '@shopify/react-native-skia';
 import { File, Paths } from 'expo-file-system';
@@ -139,6 +140,11 @@ export default function PrototypeScreen() {
     }
   };
 
+  const openWebApp = () => {
+    const url = process.env.EXPO_PUBLIC_WEB_URL;
+    if (url) void Linking.openURL(url);
+  };
+
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
@@ -182,6 +188,7 @@ export default function PrototypeScreen() {
           </View>
           <Pressable accessibilityRole="button" style={styles.primaryButton} onPress={reset}><Text style={styles.buttonText}>Restablecer escena</Text></Pressable>
           <Pressable accessibilityRole="button" style={styles.button} onPress={exportPng}><Text style={styles.darkText}>Capturar PNG</Text></Pressable>
+          {process.env.EXPO_PUBLIC_WEB_URL && <Pressable accessibilityRole="button" style={styles.primaryButton} onPress={openWebApp}><Text style={styles.buttonText}>Abrir aplicación completa</Text></Pressable>}
           <Text style={styles.note}>Fixture local ficticio. No hay backend, login ni persistencia en este prototipo.</Text>
           {exportState !== 'idle' && <Text style={exportState === 'shared' ? styles.success : styles.error}>{exportMessage}</Text>}
         </View>

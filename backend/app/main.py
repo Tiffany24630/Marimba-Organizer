@@ -10,6 +10,7 @@ from app.api.routes import router
 from app.api.auth_routes import router as auth_router
 from app.api.collab_routes import router as collab_router
 from app.api.public_routes import router as public_router
+from app.api.health import router as health_router
 from app.core.config import settings
 
 log = logging.getLogger(__name__)
@@ -333,6 +334,7 @@ app.include_router(collab_router,prefix='/api')
 # NO son los de una ruta privada, y mezclarlos facilitaria abrir por error el
 # editor a un visitante sin sesion.
 app.include_router(public_router,prefix='/api')
+app.include_router(health_router)
 
 
 @app.middleware('http')

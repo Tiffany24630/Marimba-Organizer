@@ -81,20 +81,23 @@ def _check_environment() -> list[str]:
 
 def _check_files(root: Path, dist: Path | None) -> list[str]:
     errors: list[str] = []
-    nginx = root / "frontend" / "nginx.conf"
+    netlify = root / "netlify.toml"
+    redirects = root / "frontend" / "public" / "_redirects"
     main = root / "backend" / "app" / "main.py"
     dockerfile = root / "backend" / "Dockerfile"
     launcher = root / "backend" / "start_production.py"
     vite = root / "frontend" / "vite.config.ts"
-    for path in (nginx, main, dockerfile, launcher, vite):
+    for path in (netlify, redirects, main, dockerfile, launcher, vite):
         if not path.is_file():
             errors.append(f"falta el archivo requerido: {path.relative_to(root)}")
-    if nginx.is_file():
-        content = nginx.read_text(encoding="utf-8")
-        if "location /api/" not in content or "proxy_pass" not in content:
-            errors.append("el proxy /api no esta configurado")
-        if "try_files $uri $uri/ /index.html" not in content:
-            errors.append("falta el fallback SPA de nginx")
+    if netlify.is_file():
+        content = netlify.read_text(encoding="utf-8")
+        if 'from = "/api/*"' not in content or "status = 200" not in content:
+            errors.append("el proxy /api de Netlify no esta configurado")
+        if 'from = "/*"' not in content or 'to = "/index.html"' not in content:
+            errors.append("falta el fallback SPA de Netlify")
+    if redirects.is_file() and "/api/*" not in redirects.read_text(encoding="utf-8"):
+        errors.append("falta el proxy /api en _redirects")
     if vite.is_file() and "VITE_DEPLOY_ENV" not in vite.read_text(encoding="utf-8"):
         errors.append("Vite no declara VITE_DEPLOY_ENV")
     if main.is_file():
