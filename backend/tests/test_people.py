@@ -41,6 +41,22 @@ def test_create_person_rejects_blank_and_duplicates():
     pid,name=_person('QA Unica')
     assert client.post('/api/people',json={'name':name}).status_code==409
 
+def test_project_person_can_be_reactivated_after_project_removal():
+    project_id=client.post('/api/projects',json={'name':_unique('QA Reactivar')}).json()['id']
+    name=_unique('QA Reintegrable')
+    first=client.post('/api/people',json={'name':name,'project_id':project_id})
+    assert first.status_code==200
+    person_id=first.json()['id']
+
+    removed=client.delete(f'/api/people/{person_id}',params={
+        'project_id':project_id,'scope':'project'})
+    assert removed.status_code==200
+
+    again=client.post('/api/people',json={'name':name,'project_id':project_id})
+    assert again.status_code==200
+    assert again.json()['id']==person_id
+    assert again.json()['active'] is True
+
 def test_rename_person_updates_catalog_and_validates():
     pid,name=_person('QA Renombrable')
     r=client.patch(f'/api/people/{pid}',json={'name':_unique('QA Renombrada')})

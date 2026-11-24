@@ -22,10 +22,80 @@ export const PERSON_W=150;
 export const PERSON_H=44;
 export const MARIMBA_DEFAULT={width:380,height:150,pad:14,gap:10,slotH:54,slotY:56,minSlotW:104};
 
+/**
+ * Ancho minimo que necesita una marimba para `n` puestos sin que ninguno baje
+ * de `minSlotW` (despejando la formula de `slotRect`).
+ *
+ * Es la MISMA regla que ya aplicaban `addMarimba` y `addPosition`, escrita aqui
+ * para que exista UN solo sitio: el store, el inspector y cualquier UI leen de
+ * aqui en vez de repetir la cuenta.
+ */
+export function minMarimbaWidth(n:number){
+  const slots=Math.max(n,1);
+  return 2*MARIMBA_DEFAULT.pad+slots*MARIMBA_DEFAULT.minSlotW
+   +(slots-1)*MARIMBA_DEFAULT.gap;
+}
+
+/**
+ * Fase 7W - altura minima de una marimba.
+ *
+ * En el modelo actual los puestos ocupan una BANJA vertical FIJA: `slotRect`
+ * devuelve siempre `y = slotY` y `height = slotH`, sin mirar `m.height`. O sea,
+ * la banda es [slotY, slotY+slotH] = [56, 110].
+ *
+ * `height` es el alto del MARCO (`CanvasEditor.tsx:62`, `render.ts:33`). Si
+ * `height` fuese menor que la banda, los puestos se dibujarian por DEBAJO del
+ * marco, fuera de la marimba. Ese minimo no es un numero inventado: es
+ * exactamente el espacio que ocupa la geometria real de los puestos.
+ *
+ * Con el valor por defecto (150) sobra margen, asi que las composiciones
+ * existentes y las legacy ya lo cumplen y NO hace falta migracion.
+ */
+export function minMarimbaHeight():number{
+  return MARIMBA_DEFAULT.slotY+MARIMBA_DEFAULT.slotH;
+}
+
 export function slotRect(m:MarimbaElement,i:number){
  const n=Math.max(m.positions.length,1);
  const w=(m.width-2*MARIMBA_DEFAULT.pad-MARIMBA_DEFAULT.gap*(n-1))/n;
  return {x:MARIMBA_DEFAULT.pad+i*(w+MARIMBA_DEFAULT.gap),y:MARIMBA_DEFAULT.slotY,width:w,height:MARIMBA_DEFAULT.slotH};
+}
+
+/**
+ * Limites de escala de una persona sentada en un puesto.
+ *
+ * Konva escala la marimba con `scaleX/scaleY` y no cambia `width`, asi que el
+ * puesto se agranda en pantalla aunque `slotRect` devuelva el valor sin escala.
+ * Estas personas acompanan ese crecimiento con tope: por debajo el texto deja de
+ * leerse y por encima deja de caber con claridad en el puesto.
+ */
+export const PERSON_MIN_SCALE=0.55;
+export const PERSON_MAX_SCALE=2.2;
+export const clampPersonScale=(v:number)=>Number.isFinite(v)
+ ?Math.max(PERSON_MIN_SCALE,Math.min(PERSON_MAX_SCALE,v))
+ :1;
+
+/** Topes duros en pixeles para que el texto nunca sea ilegible ni desproporcionado. */
+export const PERSON_MIN_W=40;
+export const PERSON_MAX_W=420;
+export const PERSON_MIN_H=24;
+export const PERSON_MAX_H=150;
+export const clampNumber=(v:number,lo:number,hi:number)=>
+ Number.isFinite(v)?Math.max(lo,Math.min(hi,v)):lo;
+
+/**
+ * Escala visual que ve una persona sentada en el puesto `i` de la marimba `m`.
+ *
+ * Devuelve 1 cuando la marimba no esta escalada, de modo que el comportamiento
+ * normal no cambia. Se usa el promedio de X e Y para que el texto nunca se
+ * deforme, y se acota con `clampPersonScale` para no perder legibilidad.
+ */
+export function seatScale(m:MarimbaElement,i:number){
+ const sx=Math.abs(m.scaleX||1),sy=Math.abs(m.scaleY||1);
+ const k=(sx+sy)/2;
+ // Un margen del 1% evita reescalados por decimales de Konva al soltar el tirador.
+ if(Math.abs(k-1)<0.01)return 1;
+ return clampPersonScale(k);
 }
 
 export function localToWorld(m:MarimbaElement,lx:number,ly:number){
@@ -74,9 +144,13 @@ export function elementBBox(e:Element, marimba?:MarimbaElement){
  if(e.type==='person'&&e.marimbaId&&marimba){
   const idx=marimba.positions.findIndex(p=>p.id===e.marimbaPositionId);
   if(idx>=0){
+   // Misma regla que PersonNode: el puesto sin escala por el factor de la
+   // marimba. Si no, la caja de la persona no coincidiria con lo que se dibuja
+   // y el PNG exportado la cortaria.
+   const k=seatScale(marimba,idx);
    const r=slotRect(marimba,idx);
-   w=r.width-6;
-   h=r.height-6;
+   w=(r.width-6)*k;
+   h=(r.height-6)*k;
    ox=w/2;
    oy=h/2;
    rot=marimba.rotation;

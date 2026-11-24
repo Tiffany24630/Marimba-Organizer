@@ -1,6 +1,7 @@
 import {create} from 'zustand';
 import type {Element,MarimbaElement,PersonElement} from '../types';
-import {MARIMBA_DEFAULT,PERSON_H,PERSON_W,nearestSlot,slotCenter,slotRect,worldToLocal} from '../lib/layout';
+import {MARIMBA_DEFAULT,PERSON_H,PERSON_W,PERSON_MAX_W,PERSON_MAX_H,PERSON_MIN_H,PERSON_MIN_W,clampNumber,clampPersonScale,minMarimbaHeight,minMarimbaWidth,nearestSlot,slotCenter,slotRect,worldToLocal} from '../lib/layout';
+import {mergeNote,normalizeNote} from '../lib/notes';
 
 export const uid=()=>Math.random().toString(36).slice(2)+Date.now();
 
@@ -23,15 +24,23 @@ export function normalizeElement(raw:any):Element|null{
  if(isMarimba){
   const positions=(Array.isArray(raw.positions)?raw.positions:[]).map((p:any)=>{
    if(typeof p==='string')return {id:uid(),type:p,personId:null as number|null};
-   return {id:typeof p?.id==='string'&&p.id?p.id:uid(),type:String(p?.type??p?.name??'Primera'),personId:(typeof p?.personId==='number'?p.personId:null) as number|null};
+   const pos={id:typeof p?.id==='string'&&p.id?p.id:uid(),type:String(p?.type??p?.name??'Primera'),personId:(typeof p?.personId==='number'?p.personId:null) as number|null};
+   // 7B.1: la anotacion del puesto debe sobrevivir a la recarga.
+   const pn=normalizeNote(p?.note);
+   return pn?{...pos,note:pn}:pos;
   });
-  return {...base,type:'marimba',name:String(raw.name||'Marimba'),positions};
+  // 7B.1: idem para la marimba.
+  const mn=normalizeNote(raw.note);
+  return {...base,type:'marimba',name:String(raw.name||'Marimba'),positions,...(mn?{note:mn}:{})};
  }
  if(raw.type==='person'){
+  // 7B.1: la anotacion de la persona sobrevive a la recarga.
+  const pn=normalizeNote(raw.note);
   return {...base,type:'person',name:String(raw.name||'Persona'),personId:num(raw.personId,0),
    positionType:String(raw.positionType??raw.position??'Primera'),
    marimbaId:typeof raw.marimbaId==='string'?raw.marimbaId:null,
-   marimbaPositionId:typeof raw.marimbaPositionId==='string'?raw.marimbaPositionId:null};
+   marimbaPositionId:typeof raw.marimbaPositionId==='string'?raw.marimbaPositionId:null,
+   ...(pn?{note:pn}:{})};
  }
  return null;
 }
@@ -85,11 +94,32 @@ function cloneEls(els:Element[]):Element[]{
 const sig=(els:Element[])=>JSON.stringify(els);
 
 /**
+ * Fase 7E - modo de solo lectura, en UN solo sitio.
+ *
+ * `step` y `committed` son el cuello de botella por el que pasa TODA
+ * mutacion del lienzo (arrastrar, soltar, asignar, renombrar, borrar,
+ * deshacer/rehacer, anotaciones, candados...). Bloquear aqui cubre el raton,
+ * el tactil y el teclado de una sola vez, sin comprobar permisos en cada
+ * componente y sin que puedan contradecirse entre si.
+ *
+ * El backend sigue siendo la autoridad: esto evita que un `reader` llegue
+ * siquiera a marcar el lienzo como sucio.
+ */
+let READ_ONLY=false;
+
+/** Debe llamarse al abrir un proyecto como `reader`, y al salir de el. */
+export function setReadOnly(v:boolean){READ_ONLY=!!v;}
+
+export function isReadOnly():boolean{return READ_ONLY;}
+
+/**
  * One logical undo step for a COMPOSITION-only operation.
  * Pushes exactly one snapshot, and nothing at all when the operation is a no-op
  * (so a cancelled interaction never pollutes the history nor the dirty flag).
  */
 function step(s:State,els:Element[],extra?:Partial<State>):Partial<State>{
+ // Un lector no modifica nada: se descarta el cambio, no se aplica.
+ if(READ_ONLY)return {};
  if(sig(els)===sig(s.elements))return {...(extra||{}),elements:s.elements};
  return {history:[...s.history.slice(-29),cloneEls(s.elements)],future:[],elements:els,isDirty:true,...extra};
 }
@@ -101,8 +131,44 @@ function step(s:State,els:Element[],extra?:Partial<State>):Partial<State>{
  * visual representation changed and must be saved.
  */
 function committed(s:State,els:Element[],extra?:Partial<State>):Partial<State>{
+ if(READ_ONLY)return {};
  if(sig(els)===sig(s.elements))return {...(extra||{}),elements:s.elements};
  return {future:[],elements:els,isDirty:true,...extra};
+}
+
+/**
+ * Limites de escala y tamano de una persona.
+ *
+ * La fuente unica de verdad vive en `lib/layout.ts` porque el lienzo necesita
+ * exactamente los mismos limites al dibujar. Aqui se reexportan para no romper
+ * los imports existentes del store y del inspector.
+ */
+export {PERSON_MIN_SCALE,PERSON_MAX_SCALE,clampPersonScale,clampNumber,
+ PERSON_MIN_W,PERSON_MAX_W,PERSON_MIN_H,PERSON_MAX_H} from '../lib/layout';
+
+/**
+ * Al cambiar el tamano de una marimba, sus personas ocupadas se reajustan.
+ *
+ * El escalado VISIBLE lo aplica `PersonNode` via `seatScale(marimba, idx)`, que
+ * es la unica regla y ya viene acotada. Aqui solo se guarda en el elemento el
+ * tamano que tendra la persona a escala 1, para que el Inspector, el guardado y
+ * una persona que se suelte después partan del mismo numero.
+ */
+function withCascade(next:Element[], marimbaId:string|null){
+ if(!marimbaId)return next;
+ const m=next.find(e=>e.id===marimbaId&&e.type==='marimba');
+ if(!m||m.type!=='marimba')return next;
+ return next.map(e=>{
+  if(e.type!=='person'||e.marimbaId!==marimbaId)return e;
+  if(!e.marimbaPositionId)return e;
+  const i=m.positions.findIndex(p=>p.id===e.marimbaPositionId);
+  if(i<0)return e;
+  const r=slotRect(m,i);
+  // A escala 1 (`k=1`): el ancho/alto base del puesto.
+  return {...e,width:clampNumber(r.width-6,PERSON_MIN_W,PERSON_MAX_W),
+   height:clampNumber(r.height-6,PERSON_MIN_H,PERSON_MAX_H),
+   scaleX:1,scaleY:1};
+ });
 }
 
 export function compatiblePosition(a:string,b:string){
@@ -124,7 +190,9 @@ export function assignmentError(els:Element[],personId:string,marimbaId:string,s
  if(elementLocked(els,p.id)||m.locked)return 'Desbloquea la persona y las marimbas antes de asignar.';
  const occupant=els.find(x=>x.type==='person'&&x.personId===slot.personId);
  if(occupant&&elementLocked(els,occupant.id))return 'El ocupante está bloqueado.';
- if(!compatiblePosition(p.positionType,slot.type))return `Puesto incompatible: ${p.positionType} / ${slot.type}. Retira la persona antes de cambiar su tipo musical.`;
+ // UX-4: en edicion MANUAL no se restringe la combinacion persona/puesto.
+ // El motor de sugerencias si respeta el puesto musical de la plantilla; el
+ // usuario tiene libertad para acomodar a quien quiera donde quiera.
  return null;
 }
 
@@ -155,6 +223,8 @@ type State={
  addMarimba:(m:{name:string,positions:string[]})=>void;
  addCustomMarimba:(name?:string)=>void;
  update:(id:string,patch:Partial<PersonElement>&Partial<MarimbaElement>)=>void;
+  // Fase 7R: cambio de dimensiones de una marimba como UNA operacion logica.
+  resizeMarimba:(id:string,width:number,height:number)=>void;
  createPersonElement:(p:{personId:number,name:string,positionType?:string})=>string|null;
  renamePerson:(personElId:string,name:string)=>boolean;
  removePersonFromProject:(personElId:string)=>void;
@@ -165,6 +235,9 @@ type State={
  setPositionType:(marimbaId:string,positionId:string,type:string)=>void;
  setPersonPositionType:(personElId:string,type:string)=>void;
  movePosition:(marimbaId:string,positionId:string,dir:-1|1)=>void;
+ // Fase 7B.1: anotaciones de personas, marimbas y puestos.
+ setNote:(target:{elementId:string;positionId?:string|null},patch:{label?:string;comment?:string})=>void;
+ clearNote:(target:{elementId:string;positionId?:string|null})=>void;
  assign:(personElId:string,marimbaId:string,positionId:string)=>void;
  unassign:(personElId:string,at:{x:number,y:number}|null)=>void;
  dropPerson:(personElId:string,pointer:{x:number,y:number}|null,fallback:{x:number,y:number,rotation:number})=>void;
@@ -210,6 +283,9 @@ export const useComposition=create<State>((set)=>({
   return {history:s.history.slice(0,-1)};
  }),
  undo:()=>set(s=>{
+  // 7E: un lector no deshace ni rehace: no hay historia que naturalistamente
+  // se creara, pero se blinda por si quedara alguna de una sesion anterior.
+  if(READ_ONLY)return {};
   if(!s.history.length)return {};
   const prev=s.history[s.history.length-1];
   const newHistory=s.history.slice(0,-1);
@@ -222,6 +298,7 @@ export const useComposition=create<State>((set)=>({
   };
  }),
  redo:()=>set(s=>{
+  if(READ_ONLY)return {};
   if(!s.future.length)return {};
   const next=s.future[0];
   const newFuture=s.future.slice(1);
@@ -248,8 +325,7 @@ export const useComposition=create<State>((set)=>({
   return step(s,[...s.elements,el],{selectedId:el.id,selectedSlot:null});
  }),
  addMarimba:m=>set(s=>{
-  const n=Math.max(m.positions.length,1);
-  const width=Math.max(MARIMBA_DEFAULT.width,2*MARIMBA_DEFAULT.pad+n*MARIMBA_DEFAULT.minSlotW+(n-1)*MARIMBA_DEFAULT.gap);
+  const width=Math.max(MARIMBA_DEFAULT.width,minMarimbaWidth(m.positions.length));
   const el:MarimbaElement={id:uid(),type:'marimba',name:m.name,x:260+Math.random()*160,y:200+Math.random()*120,
    width,height:MARIMBA_DEFAULT.height,rotation:0,scaleX:1,scaleY:1,locked:false,
    positions:m.positions.map(t=>({id:uid(),type:t,personId:null}))};
@@ -265,8 +341,48 @@ export const useComposition=create<State>((set)=>({
   const el=s.elements.find(e=>e.id===id);
   if(!el)return {};
   if(elementLocked(s.elements,id))return {};
-  if(Object.entries(patch).every(([key,value])=>(el as any)[key]===value))return {};
-  return step(s,s.elements.map(e=>e.id===id?{...e,...patch} as Element:e));
+  // 8A - las COORDENADAS deben ser finitas, para marimbas y personas. Cierra el
+  // hueco que dejo 7V, cuya validacion solo miraba `width`/`height`.
+  // SOLO finitud: no se inventan limites; las coordenadas negativas siguen siendo
+  // validas porque el lienzo permite elementos fuera del origen.
+  // Va antes de nada mas para que el rechazo sea ATOMICO sobre el parche entero.
+  const coord=(k:'x'|'y')=>{
+   const v=(patch as any)[k];
+   return v!==undefined&&!Number.isFinite(v);
+  };
+  if(coord('x')||coord('y'))return {};
+  // Fase 7V - validacion geometrica de las DIMENSIONES de una marimba, ANTES de
+  // cualquier mutacion. Si el parche trae ancho o alto se valida el parche
+  // COMPLETO (mezclando lo que llega con lo que ya hay) y, si algo no vale, se
+  // rechaza la operacion ENTERA: ni las dimensiones ni ninguna otra propiedad
+  // del mismo parche se aplican. Eso es lo que la hace atomica.
+  //
+  // Solo aplica a marimbas: las dimensiones de una PERSONA tienen su propia
+  // regla mas abajo (min 60x28) y no se tocan aqui.
+  if(el.type==='marimba'&&(patch.width!==undefined||patch.height!==undefined)){
+   const w=patch.width??el.width,h=patch.height??el.height;
+   if(!Number.isFinite(w)||!Number.isFinite(h))return {};
+   if(w<=0||h<=0)return {};
+   if(w<minMarimbaWidth(el.positions.length))return {};
+   // 7W: el alto no puede ser menor que la banda vertical que ocupan los
+   // puestos (slotY+slotH), o estos se dibujarian fuera del marco.
+   if(h<minMarimbaHeight())return {};
+  }
+  // UX-4: el texto de una persona no puede deformarse. Se acota la escala y se
+  // conserva la proporcion, de modo que siempre pueda volver a su tamano original.
+  let safe={...patch};
+  if(el.type==='person'){
+   safe={...safe,width:Math.max(60,patch.width??el.width),height:Math.max(28,patch.height??el.height)};
+   const touches=(k:keyof typeof patch)=>patch[k]!==undefined;
+   if(touches('scaleX')||touches('scaleY')||touches('width')||touches('height')){
+    const ratio=Math.max(0.15,Math.min(4,(patch.scaleX??el.scaleX)/(patch.scaleY??el.scaleY)));
+    const k=clampPersonScale(ratio);
+    safe={...safe,scaleX:k,scaleY:k};
+   }
+  }
+  if(Object.entries(safe).every(([key,value])=>(el as any)[key]===value))return {};
+  const next=s.elements.map(e=>e.id===id?({...e,...safe} as Element):e);
+  return step(s,el.type==='marimba'?withCascade(next,id):next);
  }),
  // GLOBAL write: PATCH /people/{id} already succeeded, so the catalog change is a fact.
  // It is deliberately kept OUT of the composition history: undo must never pretend to
@@ -315,13 +431,49 @@ export const useComposition=create<State>((set)=>({
   return step(s,elements,{selectedId:null,selectedSlot:null});
  }),
  clear:()=>set({elements:[],history:[],future:[],isDirty:false,selectedId:null,selectedSlot:null,savedSig:''}),
+  /**
+   * Fase 7R - `resizeMarimba(id, width, height)`.
+   *
+   * Accion UNICA y centralizada para cambiar el tamano de una marimba. `update`
+   * se deja como estaba (solo `withCascade`); esta es la operacion que si
+   * reposiciona, porque reposicionar es parte del contrato de un redimensionado.
+   *
+   * ORDEN: validar TODO primero y solo despues mutar. Un rechazo devuelve `{}`,
+   * es decir, no cambia absolutely nada: ni marimba, ni personas, ni IDs, ni
+   * asignaciones, ni otras marimbas, ni historial, ni la marca de sucio.
+   *
+   * - Candado: `elementLocked` cubre la marimba bloqueada y la marimba con
+   *   alguna persona sentada bloqueada (misma regla que usa `update`).
+   * - Solo lectura: lo bloquea `step`, que es el cuello de botella de TODA
+   *   mutacion del lienzo; no se duplica la comprobacion aqui.
+   * - No-op: si el tamano es identico, `step` no anade un paso de historial.
+   */
+  resizeMarimba:(id,width,height)=>set(s=>{
+   const el=s.elements.find(e=>e.id===id);
+   if(!el||el.type!=='marimba')return {};              // id inexistente o no marimba
+   if(elementLocked(s.elements,id))return {};          // candado
+   // Valores no finitos (NaN, Infinity, -Infinity) o no positivos.
+   if(!Number.isFinite(width)||!Number.isFinite(height))return {};
+   if(width<=0||height<=0)return {};
+   // Ancho minimo: por debajo, algum puesto quedaria mas estrecho que minSlotW.
+   if(width<minMarimbaWidth(el.positions.length))return {};
+   // 7W: mismo minimo vertical que `update`, para que ambas acciones coherentes.
+   if(height<minMarimbaHeight())return {};
+   // No-op explicito: no ensuciar el historial ni marcar la composicion.
+   if(width===el.width&&height===el.height)return {};
+   const resized={...el,width,height};
+   const els=s.elements.map(e=>e.id===id?resized:e);
+   // Un unico `step`: reposicion + cascade ocurren DENTRO de la misma
+   // transformacion, asi que el historial recibe un solo paso logico.
+   return step(s,withCascade(withRepositioned(els,resized),id));
+  }),
  addPosition:(marimbaId,type)=>set(s=>{
   const m=s.elements.find(e=>e.id===marimbaId);
   if(!m||m.type!=='marimba'||m.locked)return {};
   const els=s.elements.map(e=>{
    if(e.type!=='marimba'||e.id!==marimbaId)return e;
    const positions=[...e.positions,{id:uid(),type:type.trim()||'Primera',personId:null}];
-   const needed=2*MARIMBA_DEFAULT.pad+positions.length*MARIMBA_DEFAULT.minSlotW+(positions.length-1)*MARIMBA_DEFAULT.gap;
+   const needed=minMarimbaWidth(positions.length);
    const mm={...e,positions,width:Math.max(e.width,needed)};
    return withRepositioned(s.elements.map(x=>x.id===marimbaId?mm:x),mm).find(x=>x.id===marimbaId)??mm;
   });
@@ -341,7 +493,7 @@ export const useComposition=create<State>((set)=>({
     x:c&&r?c.x-r.width/2:e.x,y:c&&r?c.y-r.height/2:e.y};
    return e;
   });
-  return step(s,withRepositioned(freed,stripped));
+  return step(s,withCascade(withRepositioned(freed,stripped),marimbaId));
  }),
  setPositionType:(marimbaId,positionId,type)=>set(s=>{
   const m=s.elements.find(e=>e.id===marimbaId);
@@ -356,7 +508,9 @@ export const useComposition=create<State>((set)=>({
   if(t===pe.positionType)return {};
   const m=s.elements.find((e):e is MarimbaElement=>e.id===pe.marimbaId&&e.type==='marimba');
   const slot=m?.positions.find(p=>p.id===pe.marimbaPositionId);
-  if(slot&&!compatiblePosition(t,slot.type))return {};
+  // Solo se bloquea si esta SENTADA y su marimba/puesto ya no existe (estado roto).
+  // Una persona libre siempre puede cambiar su puesto musical.
+  if(pe.marimbaId&&(!m||!slot))return {};
   return step(s,s.elements.map(el=>{
    if(el.id===personElId&&el.type==='person')return {...el,positionType:t};
    return el;
@@ -371,8 +525,56 @@ export const useComposition=create<State>((set)=>({
   const positions=[...m.positions];
   [positions[i],positions[j]]=[positions[j],positions[i]];
   const mm={...m,positions};
-  return step(s,withRepositioned(s.elements.map(e=>e.id===marimbaId?mm:e),mm));
+  return step(s,withCascade(withRepositioned(s.elements.map(e=>e.id===marimbaId?mm:e),mm),marimbaId));
  }),
+ // Fase 7B.1: anota una persona, una marimba o un puesto concreto.
+ // Solo cambia el campo `note`: nunca toca asignaciones ni geometria.
+ setNote:(target,patch)=>set(s=>{
+  const el=s.elements.find(e=>e.id===target.elementId);
+  if(!el)return {};
+  // Respetamos el bloqueo: un elemento bloqueado tampoco se anota.
+  if(elementLocked(s.elements,el.id))return {};
+  if(!target.positionId)return step(s,s.elements.map(e=>{
+   if(e.id!==el.id)return e;
+   const n=mergeNote(e.note,patch);
+   const next={...e};
+   if(n)next.note=n;else delete next.note;
+   return next;
+  }));
+  if(el.type!=='marimba')return {};
+  if(!el.positions.some(p=>p.id===target.positionId))return {};
+  return step(s,s.elements.map(e=>{
+   if(e.id!==el.id||e.type!=='marimba')return e;
+   return {...e,positions:e.positions.map(p=>{
+    if(p.id!==target.positionId)return p;
+    const n=mergeNote(p.note,patch);
+    const next={...p};
+    if(n)next.note=n;else delete next.note;
+    return next;
+   })};
+  }));
+ }),
+ clearNote:target=>set(s=>{
+  const el=s.elements.find(e=>e.id===target.elementId);
+  if(!el||elementLocked(s.elements,el.id))return {};
+  if(!target.positionId)return step(s,s.elements.map(e=>{
+   if(e.id!==el.id)return e;
+   const next={...e};
+   delete next.note;
+   return next;
+  }));
+  if(el.type!=='marimba')return {};
+  return step(s,s.elements.map(e=>
+   e.id===el.id&&e.type==='marimba'
+    ?{...e,positions:e.positions.map(p=>{
+      if(p.id!==target.positionId)return p;
+      const next={...p};
+      delete next.note;
+      return next;
+     })}
+    :e));
+ }),
+
  assign:(personElId,marimbaId,positionId)=>set(s=>{
   const pe=s.elements.find(e=>e.id===personElId);
   const m=s.elements.find(e=>e.id===marimbaId);
@@ -435,7 +637,7 @@ export const useComposition=create<State>((set)=>({
   const els=s.elements.map(e=>e.id===id&&e.type==='marimba'?{...e,...g}:e);
   const m=els.find(e=>e.id===id);
   if(!m||m.type!=='marimba')return {elements:els};
-  const positioned=withRepositioned(els,m);
+  const positioned=withCascade(withRepositioned(els,m),id);
   if(JSON.stringify(positioned)===JSON.stringify(s.elements))return {};
   return {elements:positioned,isDirty:true};
  }),

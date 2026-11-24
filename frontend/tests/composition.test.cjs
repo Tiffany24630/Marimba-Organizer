@@ -17,9 +17,18 @@ function seed(){
 test('same-slot assignment is a clean no-op',()=>{
  seed();state().assign('p1','m','s1');assert.equal(state().history.length,0);assert.equal(state().isDirty,false);
 });
-test('incompatible assignment preserves types, slots and history',()=>{
- seed();const before=JSON.stringify(state().elements);state().assign('p1','m','s3');
- assert.equal(JSON.stringify(state().elements),before);assert.equal(state().history.length,0);
+test('manual assignment is free but never rewrites the physical slot type',()=>{
+ seed();const before=JSON.stringify(state().elements);
+ // UX-4: en edicion manual NO hay restriccion musical -> Ana (Primera) va a s3 (Bajo).
+ state().assign('p1','m','s3');
+ assert.notEqual(JSON.stringify(state().elements),before);
+ assert.equal(state().history.length,1);
+ assert.equal(state().elements.find(e=>e.id==='p1').marimbaPositionId,'s3');
+ // El invariante sigue vigente: el tipo FISICO del puesto no se reescribe solo.
+ assert.equal(state().elements[0].positions[2].type,'Bajo');
+ assert.equal(state().elements[0].positions[0].type,'Primera');
+ state().undo();
+ assert.equal(JSON.stringify(state().elements),before);
 });
 test('replacement is one undo step and restores saved dirty state',()=>{
  seed();const before=JSON.stringify(state().elements);state().assign('p1','m','s2');
@@ -35,10 +44,12 @@ test('locked source marimba blocks secondary person operations',()=>{
 test('locked occupant cannot be replaced',()=>{
  seed();state().toggleLock('p2');const before=JSON.stringify(state().elements);state().assign('p1','m','s2');assert.equal(JSON.stringify(state().elements),before);
 });
-test('musical type does not silently rewrite occupied physical slot',()=>{
- seed();const before=JSON.stringify(state().elements);state().setPersonPositionType('p1','Bajo');assert.equal(JSON.stringify(state().elements),before);
- state().unassign('p1',null);state().setPersonPositionType('p1','Bajo');
- assert.equal(state().elements.find(e=>e.id==='p1').positionType,'Bajo');assert.equal(state().elements[0].positions[0].type,'Primera');
+test('musical type never rewrites the physical slot it sits on',()=>{
+ seed();const before=JSON.stringify(state().elements);state().setPersonPositionType('p1','Bajo');
+ assert.equal(state().elements.find(e=>e.id==='p1').positionType,'Bajo');
+ assert.equal(state().elements[0].positions[0].type,'Primera');
+ assert.notEqual(JSON.stringify(state().elements),before);
+ state().undo();assert.equal(JSON.stringify(state().elements),before);
 });
 test('identical property edit does not add an undo step',()=>{
  seed();state().update('m',{name:'M'});assert.equal(state().history.length,0);assert.equal(state().isDirty,false);

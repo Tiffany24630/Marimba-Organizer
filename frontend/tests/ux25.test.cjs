@@ -6,6 +6,7 @@ require.extensions['.ts']=(module,file)=>module._compile(ts.transpileModule(fs.r
  compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
 }).outputText,file);
 const {useComposition:store,elementLocked}=require('../src/store/composition.ts');
+const {seatScale,slotRect,PERSON_MAX_SCALE,PERSON_MIN_SCALE}=require('../src/lib/layout.ts');
 const state=()=>store.getState();
 const clone=(v)=>JSON.parse(JSON.stringify(v));
 function seed(){
@@ -217,17 +218,83 @@ test('undo back to the saved state clears dirty; undo elsewhere keeps it dirty',
 
 test('a musical type never silently rewrites a physical slot',()=>{
  seed();
+ // UX-4: en edicion manual se puede cambiar el puesto musical sentado.
  state().setPersonPositionType('p1','Bajo');
+ assert.equal(state().elements.find(e=>e.id==='p1').positionType,'Bajo');
+ assert.equal(state().history.length,1);
+ // El invariante se mantiene: el tipo FISICO del puesto nunca se reescribe solo.
+ assert.equal(state().elements[0].positions[0].type,'Primera');
+ assert.equal(state().elements[0].positions[2].type,'Bajo');
+ state().undo();
  assert.equal(state().elements.find(e=>e.id==='p1').positionType,'Primera');
  assert.equal(state().history.length,0);
- assert.equal(state().isDirty,false);
 
  state().setPersonPositionType('p3','Tenor');
  assert.equal(state().history.length,1);
  assert.equal(state().elements.find(e=>e.id==='p3').positionType,'Tenor');
  assert.equal(state().elements[0].positions[0].type,'Primera');
- assert.equal(state().elements[0].positions[2].type,'Bajo');
  state().undo();
  assert.equal(state().elements.find(e=>e.id==='p3').positionType,'Bajo');
+});
+
+test('resizing a marimba resizes its people and never squashes the text',()=>{
+ seed();
+ const p1=state().elements.find(e=>e.id==='p1');
+ const w0=state().elements[0].width;
+ state().update('m',{width:w0+200});
+ const m=state().elements[0];
+ const seated=state().elements.find(e=>e.id==='p1');
+ assert.ok(m.width>w0);
+ assert.notEqual(seated.width,p1.width,'la persona debe seguir al ancho de su puesto');
+ assert.equal(seated.scaleX,1);
+ assert.equal(seated.scaleY,1);
+
+ // Escala extrema: se acota y se conserva la proporcion.
+ state().update('p3',{scaleX:0.01,scaleY:0.01});
+ const p3=state().elements.find(e=>e.id==='p3');
+ assert.ok(p3.scaleX>=0.55,'escala minima acotada');
+ assert.equal(p3.scaleX,p3.scaleY,'la proporcion se conserva');
+ state().undo();
+ // Y siempre se puede devolver a su forma original.
+ state().update('p3',{width:150,height:44,scaleX:1,scaleY:1});
+ const r=state().elements.find(e=>e.id==='p3');
+ assert.equal(r.scaleX,1);
+ assert.equal(r.scaleY,1);
+});
+
+// UX-4: la marimba se escala con scaleX/scaleY (Konva no cambia `width`), asi que
+// la persona DEBE acompañar ese escalado. Antes `PersonNode` usaba siempre
+// `slotRect` sin escala y la persona se quedaba quieta mientras su puesto crecia.
+test('a seated person visually follows the marimba scale, with limits',()=>{
+ const m={id:'m',type:'marimba',name:'M',x:0,y:0,width:380,height:150,rotation:0,
+  scaleX:1,scaleY:1,locked:false,positions:[
+   {id:'s1',type:'Primera',personId:1},
+   {id:'s2',type:'Primera',personId:2}]};
+
+ // Sin escala no hay cambio de comportamiento.
+ assert.equal(seatScale(m,0),1);
+ assert.equal(seatScale(m,1),1);
+
+ // Crecer x2 duplica el ancho dibujado de la persona.
+ const base=slotRect(m,0).width-6;
+ const up=seatScale({...m,scaleX:2,scaleY:2},0);
+ assert.equal(up,2);
+ assert.equal(base*up,base*2,'la persona crece con la marimba');
+
+ // Reducir la deja en el minimo acotado: 0.5 < PERSON_MIN_SCALE.
+ // Ese es justo el limite pedido ("que no pierda calidad"): por debajo de 0.55
+ // el nombre deja de leerse.
+ const down=seatScale({...m,scaleX:0.5,scaleY:0.5},0);
+ assert.equal(down,PERSON_MIN_SCALE,'se acota al minimo legible');
+ assert.ok(base*down<base,'la persona se hace mas pequena que su puesto');
+
+ // LIMITES: nunca se deforma ni se vuelve ilegible.
+ assert.equal(seatScale({...m,scaleX:9,scaleY:9},0),PERSON_MAX_SCALE);
+ assert.equal(seatScale({...m,scaleX:0.02,scaleY:0.02},0),PERSON_MIN_SCALE);
+ // Escala no uniforme: se promedia para que el texto no se deforme.
+ assert.equal(seatScale({...m,scaleX:2,scaleY:1},0),1.5);
+ // Ruido de decimales de Konva al soltar el tirador: no debe reescalar.
+ assert.equal(seatScale({...m,scaleX:1.004,scaleY:1.004},0),1);
+ assert.equal(seatScale({...m,scaleX:0,scaleY:0},0),1,'escala 0 no colapsa el texto');
 });
 

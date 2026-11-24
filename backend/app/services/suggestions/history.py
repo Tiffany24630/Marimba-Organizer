@@ -42,9 +42,19 @@ def parse_composition_marimba_info(data):
 
     return person_marimba
 
-def get_person_history(project_id, db, exclude_song_id=None):
+def get_person_history(project_id, db, exclude_song_id=None, before_song=None):
     """
     Derivar historial de cada persona desde las canciones y composiciones del proyecto.
+
+    `exclude_song_id` excluye una cancion concreta (la que se esta organizando).
+    `before_song` acota el historial a las canciones ANTERIORES a esa, segun
+    `order_index`. Sin ese dato, el historial incluiria tambien las canciones
+    posteriores y la propuesta de la primera cancion se decidiria con informacion
+    del futuro (D3).
+
+    El desempate es estable: al compartir `order_index` se ordena por `id`, de modo
+    que "anterior" significa un par (order_index, id) estrictamente menor. El
+    resultado es determinista ante empates.
     """
     songs = db.scalars(select(Song).where(
         Song.project_id == project_id
@@ -52,6 +62,11 @@ def get_person_history(project_id, db, exclude_song_id=None):
 
     if exclude_song_id is not None:
         songs = [s for s in songs if s.id != exclude_song_id]
+
+    if before_song is not None:
+        limit = (before_song.order_index, before_song.id)
+        songs = [s for s in songs
+                 if (s.order_index or 0, s.id) < (limit[0] or 0, limit[1])]
 
     song_ids = [s.id for s in songs]
 
@@ -87,6 +102,10 @@ def get_person_history(project_id, db, exclude_song_id=None):
                     'last_position': None,
                     'last_marimba': None,
                     'last_physical_position': None,
+                    # D2: la marimba en la que mas ha tocado. El motor la leia
+                    # como Informacion y nunca se consultaba; ahora el
+                    # optimizador la usa para penalizar cambios de marimba.
+                    'favorita_marimba': None,
                 }
 
             pos_name = assignment.position.name
@@ -123,5 +142,16 @@ def get_person_history(project_id, db, exclude_song_id=None):
             h['last_position'] = pos_name
             h['last_marimba'] = marimba_name if marimba_name else None
             h['last_physical_position'] = physical_index
+
+    # D2: se calcula al final, con TODO el historial disponible. El desempate es
+    # por nombre para que dos personas con la misma frecuencia produzca siempre
+    # el mismo resultado (determinismo).
+    for h in history.values():
+        freq = h['marimba_frequency']
+
+        if freq:
+            top = max(freq.values())
+            h['favorita_marimba'] = sorted(k for k, v in freq.items()
+                                           if v == top)[0]
 
     return list(history.values())

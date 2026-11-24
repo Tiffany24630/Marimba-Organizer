@@ -1,14 +1,47 @@
-.env
-__pycache__/
-*.pyc
-backend/.pytest_cache/
-backend/marimba.db
-frontend/node_modules/
-frontend/dist/
+# --- Dependencias ---
+node_modules/
 
-# --- Artefactos generados: no deben versionarse ---
+# --- Configuracion local (contiene credenciales) ---
+.env
+
+# --- Bases de datos locales (SQLite de desarrollo y de pruebas) ---
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# --- Frontend: artefactos de compilacion ---
+dist/
 *.tsbuildinfo
-backend/test_marimba.db
 frontend/test-results/
-# Residuo temporal de una sesion de desarrollo (extracto numerado de Project.tsx)
-proj.tsx
+playwright-report/
+
+# --- Evidencia y salidas regenerables de pruebas locales ---
+*.log
+/*.txt
+/_r*.json
+check_proc.py
+frontend/e2e/.descargas/
+frontend/e2e/.*.json
+frontend/e2e/.diagnostico.txt
+frontend/e2e/diagnostico.chromium.cjs
+frontend/e2e_*.log
+backend/.pytest-tmp-*/
+backend/out_*.txt
+backend/pytest*.log
+pruebas/
+run9j_e2e.cjs
+
+# --- Editores / SO ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+.interno
