@@ -21,7 +21,10 @@ services:
       - key: CORS_ORIGINS
         sync: false
       - key: REDIS_URL
-        sync: false
+        fromService:
+          name: marimba-organizer-rate-limit
+          type: keyvalue
+          property: connectionString
       - key: MAIL_PROVIDER
         value: smtp
       - key: SMTP_HOST
