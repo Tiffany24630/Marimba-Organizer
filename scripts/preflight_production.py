@@ -101,8 +101,10 @@ def _check_files(root: Path, dist: Path | None) -> list[str]:
             errors.append("no se observa la barrera de DDL de produccion")
     if dockerfile.is_file():
         content = dockerfile.read_text(encoding="utf-8")
-        if "start_production.py" not in content:
-            errors.append("Dockerfile no usa el launcher productivo")
+        inline_launcher = ("python -m alembic upgrade head" in content and
+                           "uvicorn app.main:app" in content)
+        if "start_production.py" not in content and not inline_launcher:
+            errors.append("Dockerfile no ejecuta migraciones antes de Uvicorn")
     if launcher.is_file():
         content = launcher.read_text(encoding="utf-8")
         if "alembic" not in content or "upgrade" not in content or "execvpe" not in content:
