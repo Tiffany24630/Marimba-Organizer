@@ -19,11 +19,11 @@ Vercel proxifica `/api/*` hacia Render con `frontend/vercel.json`, conservando u
 2. En **Connect**, selecciona **Pooled connection**.
 3. Copia la cadena completa, conservando `sslmode=require`. Será `DATABASE_URL` en Render y nunca debe subirse a GitHub.
 
-## Render: API
+## Render: API como Web Service
 
-Recomendado: **New > Blueprint**, conecta el repositorio y acepta `render.yaml`.
+Este proyecto se publica manualmente como **Web Service**, no como Blueprint. El archivo `render.yaml` ya no es necesario.
 
-Para un servicio manual, rellena: **Name** `marimba-organizer-api`; **Runtime** `Docker`; **Root Directory** `backend`; **Dockerfile Path** `Dockerfile` si la raíz es `backend` (o `backend/Dockerfile` desde la raíz del repo); **Health Check Path** `/health`; **Plan** el que necesites.
+Primero crea el servicio **Key Value** y después el Web Service de la API. Para la API rellena: **Name** `marimba-organizer-api`; **Runtime** `Docker`; **Root Directory** vacío; **Dockerfile Path** `backend/Dockerfile`; **Docker Context Directory** `backend`; **Build Command** vacío; **Start Command** vacío; **Health Check Path** `/health`; **Plan** el que necesites.
 
 En **Environment Variables** coloca:
 
@@ -36,7 +36,7 @@ En **Environment Variables** coloca:
 | `PUBLIC_BASE_URL` | URL final de Vercel |
 | `CORS_ORIGINS` | URL final de Vercel, sin `/` final |
 | `RATE_LIMIT_STORE` | `redis` |
-| `REDIS_URL` | URL del Key Value de Render |
+| `REDIS_URL` | URL interna del Key Value de Render |
 | `MAIL_PROVIDER` | `smtp` |
 | `SMTP_HOST` | host SMTP |
 | `SMTP_PORT` | `587` |
