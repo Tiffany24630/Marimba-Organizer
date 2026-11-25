@@ -23,7 +23,7 @@ Vercel proxifica `/api/*` hacia Render con `frontend/vercel.json`, conservando u
 
 Este proyecto se publica manualmente como **Web Service**, no como Blueprint. El archivo `render.yaml` ya no es necesario.
 
-Primero crea el servicio **Key Value** y después el Web Service de la API. Para la API rellena: **Name** `marimba-organizer-api`; **Runtime** `Docker`; **Root Directory** vacío; **Dockerfile Path** `backend/Dockerfile`; **Docker Context Directory** `backend`; **Build Command** vacío; **Start Command** vacío; **Health Check Path** `/health`; **Plan** el que necesites.
+Primero crea el servicio **Key Value** y después el Web Service de la API. Para evitar errores de contexto, usa esta combinación exacta: **Root Directory** vacío; **Dockerfile Path** `backend/Dockerfile`; **Docker Context Directory** `backend`. No pongas `backend` también en Root Directory. Completa además **Name** `marimba-organizer-api`; **Runtime** `Docker`; **Build Command** vacío; **Start Command** vacío; **Health Check Path** `/health`; **Plan** el que necesites.
 
 En **Environment Variables** coloca:
 
