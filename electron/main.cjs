@@ -3,7 +3,7 @@ const path = require('node:path');
 
 const appUrl = process.env.ELECTRON_APP_URL;
 if (!appUrl || !/^https:\/\//i.test(appUrl)) {
-  throw new Error('ELECTRON_APP_URL debe ser una URL HTTPS de Netlify.');
+  throw new Error('ELECTRON_APP_URL debe ser una URL HTTPS de Vercel.');
 }
 
 function createWindow() {
@@ -37,7 +37,7 @@ app.whenReady().then(() => {
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({ responseHeaders: {
       ...details.responseHeaders,
-      'Content-Security-Policy': ["default-src 'self' https: data: blob:; connect-src 'self' https:; img-src 'self' https: data: blob:; style-src 'self' 'unsafe-inline' https:; script-src 'self' https: 'unsafe-inline'"]
+      'Content-Security-Policy': ["default-src 'self' https: data: blob:; connect-src 'self' https:; img-src 'self' https: data: blob:; style-src 'self' 'unsafe-inline' https:; script-src 'self' https:"]
     }});
   });
   createWindow();
