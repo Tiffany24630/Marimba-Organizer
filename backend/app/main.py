@@ -15,7 +15,16 @@ from app.core.config import settings
 
 log = logging.getLogger(__name__)
 
-app=FastAPI(title='Marimba Organizer API',version='0.1.0')
+_production = settings.app_env.strip().lower() == 'production'
+app=FastAPI(
+    title='Marimba Organizer API',
+    version='0.1.0',
+    # Swagger/OpenAPI is useful locally but unnecessarily exposes the complete
+    # route contract in a public production service.
+    docs_url=None if _production else '/docs',
+    redoc_url=None if _production else '/redoc',
+    openapi_url=None if _production else '/openapi.json',
+)
 
 # --- Fase 7G: CORS realmente registrado ---------------------------------
 # El middleware se importaba pero NUNCA se añadia a la aplicacion, asi que
